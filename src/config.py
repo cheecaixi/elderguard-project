@@ -9,7 +9,7 @@ MODEL_SAVE_DIR = "saved_model"
 
 # ── Data Cleaning ─────────────────────────────────────────────
 CONTAMINATED_SESSIONS = [2586]   # identified in EDA
-MIN_TEMPERATURE = 18.0           # realistic indoor min (°C)
+MIN_TEMPERATURE = 15.0           # realistic indoor min (°C)
 MAX_TEMPERATURE = 40.0           # realistic indoor max (°C)
 MIN_HUMIDITY = 0.0
 MAX_HUMIDITY = 100.0

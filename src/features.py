@@ -1,14 +1,28 @@
-��
-# **1. Load Data**
+# features.py
+# Encoding, scaling, and feature engineering
+# Takes clean DataFrame from cleaning.py and returns model-ready data
+
 # Import Libraries
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+import sys
+import os
 
-import matplotlib.pyplot as plt
-import seaborn as sns
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.config import TARGET_COLUMN, DROP_COLUMNS
 
-# Load cleaned data from previous step
-df = pd.read_csv("cleaneding.csv")  
+
+
+if __name__ == "__main__":
+    from src.cleaning import clean_data
+    df_clean = clean_data()
+    X, X_scaled, y, label_encoder, scaler, feature_names = build_features(df_clean)
+    print(f"\nX shape: {X.shape}")
+    print(f"X_scaled shape: {X_scaled.shape}")
+    print(f"y shape: {y.shape}")
+    print(f"Classes: {label_encoder.classes_}")
+
 
 # 7. Encode Categorical Features
 # Identify categorical columns
@@ -177,3 +191,4 @@ df = df.drop_duplicates()
 print("Duplicates after removal:", df.duplicated().sum())
 
 """Conclusion: The dataset underwent a comprehensive preprocessing process to improve data quality and consistency. Missing numerical values were handled using median imputation to reduce the influence of extreme values, while categorical values were standardized to ensure uniformity across records. Invalid values were corrected, data types were converted to appropriate formats, duplicates were removed, and outliers were treated to minimize their impact on the analysis. Additionally, new features were engineered to capture meaningful patterns and relationships within the data. As a result, the dataset is now cleaner, more reliable, and better prepared for analysis and machine learning applications."""
+

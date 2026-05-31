@@ -8,10 +8,6 @@ import numpy as np
 import sys
 import os
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-
 # Allow imports from project root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import (
@@ -38,16 +34,19 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── 3. Standardise Categorical Labels ─────────────────────────────────────────────
 def clean_activity_labels(df: pd.DataFrame) -> pd.DataFrame:
-    """Standardise inconsistent Activity Level labels."""
+    """Standardise all Activity Level variants to lowercase_underscore format."""
+    df["Activity Level"] = (
+        df["Activity Level"]
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_", regex=False)
+    )
     label_map = {
-        "High Activity": "high_activity",
-        "Low Activity": "low_activity",
-        "LowActivity": "low_activity",
-        "Low_Activity": "low_activity",
-        "Moderate Activity": "moderate_activity",
-        "ModerateActivity": "moderate_activity",
+        "lowactivity":      "low_activity",
+        "highactivity":     "high_activity",
+        "moderateactivity": "moderate_activity",
     }
-    df["Activity Level"] = df["Activity Level"].replace(label_map).str.strip()
+    df["Activity Level"] = df["Activity Level"].replace(label_map)
     print(f"[clean_activity_labels] Unique labels: {df['Activity Level'].unique()}")
     return df
 
@@ -74,49 +73,76 @@ def remove_contaminated_sessions(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def fix_invalid_values(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove physically impossible sensor readings."""
-    before = len(df)
+    """
+    Replace physically impossible sensor readings with NaN.
 
-    # Temperature: realistic indoor range 18 to 40°C
-    df = df[df["Temperature"] >= MIN_TEMPERATURE]
-    df = df[df["Temperature"] <= MAX_TEMPERATURE]
+    Justification:
+    - Capping (e.g. 292°C → 40°C) introduces artificial values that could mislead model training
+    - Removing rows loses 24% of data and introduces selection bias
+    - Converting to NaN allows session-level median imputation to fill with realistic 
+    values from the same environmental context
+    - This is the most statistically honest approach
+    """
+    # Temperature: impossible values → NaN
+    invalid_temp = (
+        (df["Temperature"] < MIN_TEMPERATURE) |
+        (df["Temperature"] > MAX_TEMPERATURE)
+    ).sum()
+    df.loc[
+        (df["Temperature"] < MIN_TEMPERATURE) |
+        (df["Temperature"] > MAX_TEMPERATURE),
+        "Temperature"
+    ] = np.nan
+    print(f"[fix_invalid_values] Temperature: marked {invalid_temp} impossible values as NaN")
 
-    # Humidity: valid range 0-100%
-    df = df[(df["Humidity"] >= MIN_HUMIDITY) | (df["Humidity"].isnull())]
-    df = df[(df["Humidity"] <= MAX_HUMIDITY) | (df["Humidity"].isnull())]
+    # Humidity: impossible values → NaN
+    invalid_hum = (
+        (df["Humidity"] < MIN_HUMIDITY) |
+        (df["Humidity"] > MAX_HUMIDITY)
+    ).sum()
+    df.loc[
+        (df["Humidity"] < MIN_HUMIDITY) |
+        (df["Humidity"] > MAX_HUMIDITY),
+        "Humidity"
+    ] = np.nan
+    print(f"[fix_invalid_values] Humidity: marked {invalid_hum} impossible values as NaN")
 
-    # CO2 Infrared: cannot be negative
-    df = df[(df["CO2_InfraredSensor"] >= 0) | (df["CO2_InfraredSensor"].isnull())]
+    # CO2 sensors: negative values → NaN
+    for col in ["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]:
+        invalid = (df[col] < 0).sum()
+        df.loc[df[col] < 0, col] = np.nan
+        print(f"[fix_invalid_values] {col}: marked {invalid} negative values as NaN")
 
-    # CO Gas Sensor: cannot be negative
-    df = df[(df["CO_GasSensor"] >= 0) | (df["CO_GasSensor"].isnull())]
+    # CO_GasSensor: negative values → NaN
+    invalid_co = (df["CO_GasSensor"] < 0).sum()
+    df.loc[df["CO_GasSensor"] < 0, "CO_GasSensor"] = np.nan
+    print(f"[fix_invalid_values] CO_GasSensor: marked {invalid_co} negative values as NaN")
 
-    print(f"[fix_invalid_values] Removed {before - len(df)} rows with impossible sensor readings")
     return df
 
 # ── 5. Handle Missing Values ─────────────────────────────────────────────
 def impute_numeric_session_median(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Impute Humidity and MetalOxideSensor_Unit2 using session-level median.
-
-    Justification:
-    - Missing values cluster in specific sessions (not random dropout)
-    - Humidity varies significantly across sessions (43% - 57%)
-    - MOS_Unit2 varies significantly across sessions (691 - 759)
-    - Session median preserves the environmental context of each session
-    - Global median used as fallback if entire session has no valid readings
+    Impute using session-level median for high-variance columns.
+    Now includes Temperature since fix_invalid_values() marks
+    impossible readings as NaN instead of capping or removing.
     """
-    session_median_cols = ["Humidity", "MetalOxideSensor_Unit2"]
+    session_median_cols = [
+        "Temperature",         
+        "Humidity",
+        "MetalOxideSensor_Unit2",
+        "CO2_InfraredSensor"
+    ]
 
     for col in session_median_cols:
         missing_before = df[col].isnull().sum()
 
-        # Fill with session-level median
+        # Step 1: session-level median
         df[col] = df.groupby("Session ID")[col].transform(
             lambda x: x.fillna(x.median())
         )
 
-        # Global median fallback
+        # Step 2: global median fallback
         remaining = df[col].isnull().sum()
         if remaining > 0:
             df[col] = df[col].fillna(df[col].median())
@@ -126,7 +152,6 @@ def impute_numeric_session_median(df: pd.DataFrame) -> pd.DataFrame:
               f"global fallback: {remaining})")
 
     return df
-
 
 def impute_co_global_median(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -219,19 +244,15 @@ def cap_outliers_iqr(df: pd.DataFrame) -> pd.DataFrame:
       to outliers but capping does not hurt them either
     - CO_GasSensor excluded - it is a discrete ordinal integer (0-4),
       capping would break its discrete nature
-    - Temperature already handled by fix_invalid_values() but IQR
-      capping is applied again as a statistical safety net
     """
     outlier_columns = [
-        "Temperature",
         "Humidity",
         "CO2_InfraredSensor",
         "CO2_ElectroChemicalSensor",
         "MetalOxideSensor_Unit1",
         "MetalOxideSensor_Unit2",
         "MetalOxideSensor_Unit3",
-        "MetalOxideSensor_Unit4",
-        # CO_GasSensor intentionally excluded — discrete ordinal (0-4)
+        "MetalOxideSensor_Unit4"
     ]
 
     # Only cap columns that exist in the DataFrame
@@ -251,18 +272,22 @@ def cap_outliers_iqr(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_data(db_path: str = DB_PATH) -> pd.DataFrame:
-    """Run the full cleaning pipeline and return a clean DataFrame."""
     df = load_data(db_path)
     df = remove_duplicates(df)
+    print(f"shape: {df.shape}")
     df = clean_activity_labels(df)
     df = clean_hvac_labels(df)
     df = remove_contaminated_sessions(df)
+    print(f"shape: {df.shape}")
     df = fix_invalid_values(df)
     df = impute_missing(df)
+    print(f"shape: {df.shape}")
     df = fix_data_types(df)
     df = cap_outliers_iqr(df)
+    df = remove_duplicates(df)
     print(f"\n[clean_data] Final shape: {df.shape[0]:,} rows x {df.shape[1]} columns")
     print(f"[clean_data] Remaining missing values: {df.isnull().sum().sum()}")
+    print(f"[clean_data] Remaining duplicate rows: {df.duplicated().sum()}")
     return df
 
 
