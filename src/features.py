@@ -7,17 +7,9 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-# Connect to the SQLite database
-DB_PATH = "/content/gas_monitoring.db"
-conn = sqlite3.connect(DB_PATH)
-
-# Read data from a table (assuming the main table is also named 'gas_monitoring')
-df = pd.read_sql_query("SELECT * FROM gas_monitoring", conn)
-
-# Close the connection
-conn.close()
+# Load cleaned data from previous step
+df = pd.read_csv("cleaneding.csv")  
 
 # 7. Encode Categorical Features
 # Identify categorical columns
