@@ -18,27 +18,63 @@ MAX_HUMIDITY = 100.0
 TARGET_COLUMN = "Activity Level"
 DROP_COLUMNS = ["Session ID"]
 
-# ── Models ────────────────────────────────────────────────────
+# ── Train/Test Split ────────────────────────────────────────────────────
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 
+# ── Tuning ────────────────────────────────────────────────────
+# Set TUNE_MODELS = True  to run GridSearchCV (slower, finds best params)
+# Set TUNE_MODELS = False to skip tuning and use default params below (faster)
+TUNE_MODELS = True
+
+# ── Default Model Parameters (used when TUNE_MODELS = False) ──
 # Random Forest
 RF_PARAMS = {
-    "n_estimators": 100,
-    "max_depth": None,
-    "random_state": RANDOM_STATE,
+    "n_estimators":    100,
+    "max_depth":       None,
+    "class_weight":    "balanced",
+    "random_state":    RANDOM_STATE,
+    "n_jobs":          -1,
 }
-
 # XGBoost
-XGB_PARAMS = {
-    "n_estimators": 100,
+GB_PARAMS = {
+    "n_estimators":  200,
     "learning_rate": 0.1,
-    "max_depth": 6,
-    "random_state": RANDOM_STATE,
+    "max_depth":     5,
+    "subsample":     0.8,
+    "random_state":  RANDOM_STATE,
 }
-
 # Logistic Regression
 LR_PARAMS = {
-    "max_iter": 1000,
-    "random_state": RANDOM_STATE,
+    "C":             1.0,
+    "max_iter":      1000,
+    "solver":        "lbfgs",
+    "multi_class":   "multinomial",
+    "class_weight":  "balanced",
+    "random_state":  RANDOM_STATE,
 }
+
+# ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
+# Only the most impactful parameters are tuned to keep runtime reasonable.
+# 5-fold StratifiedKFold CV is used to preserve class distribution.
+# Macro F1 is the scoring metric — consistent with evaluation.
+
+RF_PARAM_GRID = {
+    "n_estimators":     [100, 200],
+    "max_depth":        [None, 10, 20],
+    "min_samples_leaf": [1, 2],
+}
+
+GB_PARAM_GRID = {
+    "n_estimators":  [100, 200],
+    "learning_rate": [0.05, 0.1],
+    "max_depth":     [3, 5],
+}
+
+LR_PARAM_GRID = {
+    "C": [0.01, 0.1, 1.0, 10.0],
+}
+
+# ── Cross Validation ───────────────────────────────────────────
+CV_FOLDS   = 5      # number of folds for StratifiedKFold
+CV_SCORING = "f1_macro"  # consistent with primary evaluation metric
