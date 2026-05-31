@@ -131,7 +131,8 @@ def impute_numeric_session_median(df: pd.DataFrame) -> pd.DataFrame:
         "Temperature",         
         "Humidity",
         "MetalOxideSensor_Unit2",
-        "CO2_InfraredSensor"
+        "CO2_InfraredSensor",
+        "CO2_ElectroChemicalSensor"
     ]
 
     for col in session_median_cols:
@@ -226,7 +227,7 @@ def fix_data_types(df: pd.DataFrame) -> pd.DataFrame:
 
     # CO_GasSensor — discrete ordinal scale (0-4), store as integer
     if "CO_GasSensor" in df.columns:
-            df["CO_GasSensor"] = pd.to_numeric(df["CO_GasSensor"], errors="coerce").astype(int)
+            df["CO_GasSensor"] = pd.to_numeric(df["CO_GasSensor"], errors="coerce").astype("Int64")
             print(f"[fix_data_types] CO_GasSensor successfully converted to int.")
 
     print(f"[fix_data_types] Converted {len(categorical_cols)} columns to category dtype")
@@ -282,14 +283,17 @@ def clean_data(db_path: str = DB_PATH) -> pd.DataFrame:
     df = fix_invalid_values(df)
     df = impute_missing(df)
     print(f"shape: {df.shape}")
-    df = fix_data_types(df)
     df = cap_outliers_iqr(df)
+    df = fix_data_types(df)
+    # Second pass: imputation and IQR capping can create new duplicate rows
+    # (e.g. two rows with different NaN patterns filled with the same session median).
     df = remove_duplicates(df)
     print(f"\n[clean_data] Final shape: {df.shape[0]:,} rows x {df.shape[1]} columns")
     print(f"[clean_data] Remaining missing values: {df.isnull().sum().sum()}")
     print(f"[clean_data] Remaining duplicate rows: {df.duplicated().sum()}")
+    print(f"[clean_data] Temperature out-of-range remaining: {((df['Temperature'] < 15) | (df['Temperature'] > 40)).sum()}")
+    print(f"[clean_data] Humidity out-of-range remaining: {((df['Humidity'] < 0) | (df['Humidity'] > 100)).sum()}")
     return df
-
 
 if __name__ == "__main__":
     df_clean = clean_data()
