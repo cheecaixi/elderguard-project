@@ -23,9 +23,9 @@ def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
     Drop Session ID before modelling.
 
     Justification:
-    - Session ID is an arbitrary identifier retained through cleaning for
-      session-based imputation. It carries no predictive signal and must
-      be removed to prevent data leakage.
+    - Session ID is just an identifier retained through cleaning for
+      session-based imputation. The number itself contains no useful information.
+      Keeping it could allow the model to memorize sessions rather than learn patterns.
     """
     cols_to_drop = [col for col in ["Session ID"] if col in df.columns]
     df = df.drop(columns=cols_to_drop)
@@ -35,7 +35,7 @@ def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
 # ── 2. Feature Engineering ────────────────────────────────────────────────────
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create domain-informed features from existing sensor columns.
+    This creates new features from existing columns.
 
     Features created:
     - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
@@ -177,7 +177,7 @@ def activity_map_inv(activity_map: dict, code: int) -> str:
     return {v: k for k, v in activity_map.items()}.get(code, str(code))
 
 # ── 5. Scale Numerical Features ──────────────────────────────────────────────
-def scale_features(df: pd.DataFrame) -> tuple[pd.DataFrame, StandardScaler]:
+def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.DataFrame, StandardScaler]:
     """
     Standardise continuous sensor readings using StandardScaler.
 
@@ -215,12 +215,11 @@ def scale_features(df: pd.DataFrame) -> tuple[pd.DataFrame, StandardScaler]:
         print(f"[scale_features] Fitted new scaler on {len(scale_cols)} columns")
     else:
         df_scaled[scale_cols] = scaler.transform(df[scale_cols])
-        print(f"[scale_features] Transformed using existing scaler (no refit)")
 
     return df_scaled, scaler
 
 
-# ── 7. Validate ───────────────────────────────────────────────────────────────
+# ── 6. Validate ───────────────────────────────────────────────────────────────
 def validate(X: pd.DataFrame, y: np.ndarray, label: str = "") -> None:
     """
     Sanity check the final feature set before returning to train.py.
