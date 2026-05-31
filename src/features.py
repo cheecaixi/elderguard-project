@@ -1,179 +1,237 @@
-��
-# **1. Load Data**
-# Import Libraries
+# features.py
+# Encodes, scales, and engineers features from the cleaned dataset.
+# Designed to run after cleaning.py — call build_features() directly,
+# or run as a standalone script to write features.csv to disk.
+
 import pandas as pd
 import numpy as np
+import os
+import sys
+from sklearn.preprocessing import StandardScaler
 
-import matplotlib.pyplot as plt
-import seaborn as sns
+# Allow imports from project root
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.config import DB_PATH
+from src.cleaning import clean_data
 
-# Load cleaned data from previous step
-df = pd.read_csv("cleaneding.csv")  
 
-# 7. Encode Categorical Features
-# Identify categorical columns
-categorical_cols = [
-    "Time of Day",
-    "HVAC Operation Mode",
-    "Activity Level"
-]
+# ── 1. Load Data ─────────────────────────────────────────────────────────────
+# Data is loaded by calling clean_data() from cleaning.py inside build_features().
+# No separate load function is needed here — cleaning.py handles the full
+# loading + cleaning pipeline and returns a ready DataFrame.
 
-print("Categorical Features:")
-print(categorical_cols)
 
-"""# To identify categorical features that require numerical encoding before machine learning."""
+# ── 2. Drop Columns Not Needed for Modelling ─────────────────────────────────
+def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Drop Session ID before modelling.
 
-# Apply one hot encoding
-df = pd.get_dummies(
-    df,
-    columns=categorical_cols,
-    drop_first=True
-)
+    Justification:
+    - Session ID is an arbitrary identifier retained through cleaning for
+      session-based imputation. It carries no predictive signal and must
+      be removed to prevent data leakage.
+    """
+    cols_to_drop = [col for col in ["Session ID"] if col in df.columns]
+    df = df.drop(columns=cols_to_drop)
+    print(f"[drop_unused_columns] Dropped columns: {cols_to_drop}")
+    return df
 
-print("Encoding complete.")
-print(f"Updated dataset shape: {df.shape}")
 
-"""To convert categorical labels into numerical format while avoiding ordinal assumptions between categories."""
-"""Categorical features were transformed into numerical representations using one hot encoding to ensure compatibility with machine learning algorithms. The first category was dropped during encoding to reduce redundancy and prevent multicollinearity between encoded variables."""
+# ── 7. Encode Categorical Features ───────────────────────────────────────────
+def encode_categoricals(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    One-hot encode nominal categorical columns.
 
-# 8. Scale Numerical Features
-# Columns to scale only continuous sensor readings
-# Exclude: encoded flags (0/1), ordinal columns, Session ID
-all_scale_cols = [
-    "Temperature",
-    "Humidity",
-    "CO2_InfraredSensor",
-    "CO2_ElectroChemicalSensor",
-    "MetalOxideSensor_Unit1",
-    "MetalOxideSensor_Unit2",
-    "MetalOxideSensor_Unit3",
-    "MetalOxideSensor_Unit4",
-    "CO_GasSensor",
-    "CO2_Disagreement",
-    "MOS_Mean"
-]
+    Justification:
+    - Time of Day, HVAC Operation Mode, and Activity Level have no natural
+      ordinal ordering that a model should exploit numerically.
+    - drop_first=True drops one dummy per group to avoid perfect
+      multicollinearity (the dummy-variable trap).
+    - Ambient Light Level is intentionally excluded here; if it is treated
+      as ordinal elsewhere it should be label-encoded instead.
+    """
+    categorical_cols = [
+        col for col in ["Time of Day", "HVAC Operation Mode", "Activity Level"]
+        if col in df.columns
+    ]
+    df = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
+    print(f"[encode_categoricals] One-hot encoded: {categorical_cols}")
+    print(f"[encode_categoricals] Dataset shape after encoding: {df.shape}")
+    return df
 
-# Filter to include only columns that exist in the DataFrame
-scale_cols = [col for col in all_scale_cols if col in df.columns]
 
-# Fit and transform
-scaler = StandardScaler()
-df_scaled = df.copy()
-df_scaled[scale_cols] = scaler.fit_transform(df[scale_cols])
+# ── 8. Scale Numerical Features ──────────────────────────────────────────────
+def scale_features(df: pd.DataFrame) -> tuple[pd.DataFrame, StandardScaler]:
+    """
+    Standardise continuous sensor readings with StandardScaler.
 
-# Verify: scaled columns should have mean ≈ 0 and std ≈ 1
-print("Post-scaling stats (should be mean≈0, std≈1):")
-print(df_scaled[scale_cols].agg(["mean", "std"]).round(4).to_string())
+    Returns:
+    - df_scaled : copy of df with scaled columns (ready for distance/gradient
+                  models such as Logistic Regression, KNN, SVM).
+    - scaler    : fitted StandardScaler (save this to inverse-transform or
+                  apply consistently to test data).
 
-# Keep both: df (unscaled, interpretable) and df_scaled (ready for modelling)
-# For tree-based models (Random Forest, XGBoost) scaling is not needed
-# For distance/gradient-based models (KNN, SVM, LogReg) use df_scaled
-print(f"df        — original scale, shape: {df.shape}")
-print(f"df_scaled — standardised,    shape: {df_scaled.shape}")
+    Note:
+    - The original df (unscaled) is still available from the caller for
+      tree-based models (Random Forest, XGBoost) that do not require scaling.
+    - CO_GasSensor and High_CO are excluded: discrete ordinal / binary flags.
+    - Engineered features (MOS_Mean, CO2_Disagreement, Comfort_Index) are
+      included because they are continuous and on heterogeneous scales.
+    """
+    candidate_scale_cols = [
+        "Temperature",
+        "Humidity",
+        "CO2_InfraredSensor",
+        "CO2_ElectroChemicalSensor",
+        "MetalOxideSensor_Unit1",
+        "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit3",
+        "MetalOxideSensor_Unit4",
+        "MOS_Mean",
+        "CO2_Disagreement",
+        "Comfort_Index",
+    ]
+    scale_cols = [col for col in candidate_scale_cols if col in df.columns]
 
-plt.figure(figsize=(8,4))
+    scaler = StandardScaler()
+    df_scaled = df.copy()
+    df_scaled[scale_cols] = scaler.fit_transform(df[scale_cols])
 
-plt.hist(
-    df["CO2_InfraredSensor"],
-    bins=30,
-    alpha=0.6,
-    label="Before Scaling"
-)
+    # Sanity check: scaled columns should have mean ≈ 0, std ≈ 1
+    stats = df_scaled[scale_cols].agg(["mean", "std"]).round(4)
+    print("[scale_features] Post-scaling stats (mean ≈ 0, std ≈ 1):")
+    print(stats.to_string())
 
-plt.hist(
-    df_scaled["CO2_InfraredSensor"],
-    bins=30,
-    alpha=0.6,
-    label="After Scaling"
-)
+    return df_scaled, scaler
 
-plt.title("CO2 Infrared Sensor Before and After Scaling")
-plt.legend()
-plt.show()
 
-"""To standardize continuous sensor features so that variables with larger numerical ranges do not dominate machine learning models."""
-"""Continuous sensor features were standardized using StandardScaler while preserving a separate unscaled version of the dataset for interpretation. Scaling is particularly important for distance based and gradient based machine learning algorithms, while tree based models typically do not require feature scaling."""
+# ── 9. Feature Engineering ────────────────────────────────────────────────────
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create domain-informed features from existing sensor columns.
 
-# **9. Feature Engineering**
-# Average MOS Sensor, Reduces noise from individual sensors.
-df["MOS_Average"] = (
-    df["MetalOxideSensor_Unit1"] +
-    df["MetalOxideSensor_Unit2"] +
-    df["MetalOxideSensor_Unit3"] +
-    df["MetalOxideSensor_Unit4"]
-) / 4
+    New features:
+    - MOS_Mean           : Average of all four Metal Oxide Sensor units.
+                           Reduces per-sensor noise into a single air quality signal.
+    - CO2_Disagreement   : Absolute difference between the two CO₂ sensors.
+                           Large values flag sensor drift or localised CO₂ pockets.
+    - Comfort_Index      : Mean of Temperature and Humidity.
+                           Combines the two primary occupant-comfort variables.
+    - High_CO            : Binary flag (1 = CO_GasSensor >= 3).
+                           Highlights elevated carbon-monoxide readings that may
+                           indicate poor ventilation or unsafe conditions.
+    """
+    mos_cols = [
+        "MetalOxideSensor_Unit1",
+        "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit3",
+        "MetalOxideSensor_Unit4",
+    ]
+    if all(c in df.columns for c in mos_cols):
+        df["MOS_Mean"] = df[mos_cols].mean(axis=1)
+        print("[engineer_features] Created MOS_Mean")
 
-"""The MOS_Average feature was created by combining the Mean Opinion Scores from both ends of the communication. This provides an overall measure of call quality and user satisfaction, making it easier to analyze communication performance."""
+    if "CO2_InfraredSensor" in df.columns and "CO2_ElectroChemicalSensor" in df.columns:
+        df["CO2_Disagreement"] = (
+            df["CO2_InfraredSensor"] - df["CO2_ElectroChemicalSensor"]
+        ).abs()
+        print("[engineer_features] Created CO2_Disagreement")
 
-# CO2 Sensor Difference, Measures disagreement between sensors.
-df["CO2_Difference"] = abs(
-    df["CO2_InfraredSensor"] -
-    df["CO2_ElectroChemicalSensor"]
-)
+    if "Temperature" in df.columns and "Humidity" in df.columns:
+        df["Comfort_Index"] = (df["Temperature"] + df["Humidity"]) / 2
+        print("[engineer_features] Created Comfort_Index")
 
-"""The CO2_Difference feature was created to measure the variation between indoor and outdoor CO₂ levels. This helps identify ventilation effectiveness and highlights environments where air quality may be significantly different from outdoor conditions."""
+    if "CO_GasSensor" in df.columns:
+        df["High_CO"] = (df["CO_GasSensor"] >= 3).astype(int)
+        print("[engineer_features] Created High_CO")
 
-# Indoor Comfort Index, Simple environmental indicator.
-df["Comfort_Index"] = (
-    df["Temperature"] +
-    df["Humidity"]
-) / 2
+    return df
 
-"""The Comfort_Index feature combines temperature and humidity into a single metric representing environmental comfort. This simplifies analysis by capturing the combined effect of multiple factors that influence occupant comfort."""
 
-# High CO Alert, May help classify activity patterns.
-df["High_CO"] = (
-    df["CO_GasSensor"] >= 3
-).astype(int)
+# ── 10. Final Validation ──────────────────────────────────────────────────────
+def validate(df: pd.DataFrame, label: str = "df") -> None:
+    """Print a concise quality summary of the final feature set."""
+    print(f"\n[validate] ── {label} ──────────────────────────")
+    print(f"  Shape            : {df.shape[0]:,} rows × {df.shape[1]} columns")
+    print(f"  Missing values   : {df.isnull().sum().sum()}")
 
-"""The High_CO feature was created as a binary indicator to identify records with elevated carbon monoxide levels. This makes it easier to detect potential air quality concerns and supports classification or risk assessment tasks."""
+    dupes = df.duplicated().sum()
+    print(f"  Duplicate rows   : {dupes}")
+    if dupes:
+        print(f"  → removing {dupes} duplicates")
+        df = df.drop_duplicates()
 
-"""Feature engineering was explored but no additional features were retained as the original sensor measurements already captured the environmental conditions directly and engineered features introduced redundancy without clear predictive value."""
+    inf_count = np.isinf(df.select_dtypes(include=np.number)).sum().sum()
+    print(f"  Infinite values  : {inf_count}")
 
-# **10. Final Validation**
-# Missing Values
-print("Missing Values:")
-print(df.isnull().sum())
+    invalid_temp_low  = (df["Temperature"] < 18).sum() if "Temperature" in df.columns else "N/A"
+    invalid_temp_high = (df["Temperature"] > 40).sum() if "Temperature" in df.columns else "N/A"
+    invalid_hum_low   = (df["Humidity"] < 0).sum()    if "Humidity"    in df.columns else "N/A"
+    invalid_hum_high  = (df["Humidity"] > 100).sum()  if "Humidity"    in df.columns else "N/A"
+    print(f"  Temperature < 18 : {invalid_temp_low}")
+    print(f"  Temperature > 40 : {invalid_temp_high}")
+    print(f"  Humidity < 0     : {invalid_hum_low}")
+    print(f"  Humidity > 100   : {invalid_hum_high}")
+    print(f"  Dtypes:\n{df.dtypes.value_counts().to_string()}")
 
-# Duplicate Rows
-print("\nDuplicate Rows:")
-print(df.duplicated().sum())
 
-# Dataset Shape
-print("\nDataset Shape:")
-print(df.shape)
+# ── Master Pipeline ───────────────────────────────────────────────────────────
+def build_features(
+    db_path: str = DB_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame, StandardScaler]:
+    """
+    Run the full feature-engineering pipeline.
 
-# Data Types
-print("\nData Types:")
-print(df.dtypes)
+    Steps:
+        1.  Load + clean raw data via clean_data() from cleaning.py
+        2.  Drop unused columns (Session ID)
+        7.  One-hot encode categorical features
+        8.  Scale numerical features
+        9.  Feature engineering
+        10. Final validation
 
-# Invalid Temperature Values
-print("\nTemperature < 18:")
-print((df["Temperature"] < 18).sum())
+    Returns:
+        df        — unscaled feature set (use with tree-based models)
+        df_scaled — standardised feature set (use with Logistic Regression / KNN / SVM)
+        scaler    — fitted StandardScaler instance
+    """
+    # Steps 1–6 handled by cleaning.py
+    df = clean_data(db_path)
 
-print("\nTemperature > 40:")
-print((df["Temperature"] > 40).sum())
+    # Step 2 — drop identifiers not needed for modelling
+    df = drop_unused_columns(df)
 
-# Invalid Humidity Values
-print("\nHumidity < 0:")
-print((df["Humidity"] < 0).sum())
+    # Step 7 — encode categoricals
+    df = encode_categoricals(df)
 
-print("\nHumidity > 100:")
-print((df["Humidity"] > 100).sum())
+    # Step 8 — scale numerical features
+    df_scaled, scaler = scale_features(df)
 
-# Infinite Values
-print("\nInfinite Values:")
-print(np.isinf(df.select_dtypes(include=np.number)).sum().sum())
+    # Step 9 — engineer new features (on unscaled df so values stay interpretable)
+    df        = engineer_features(df)
+    df_scaled = engineer_features(df_scaled)
 
-"""# A final validation check identified 2 remaining duplicate records in the dataset. These duplicates may have appeared after preprocessing and feature engineering steps, where transformations caused previously different records to become identical. Since duplicate observations can introduce bias and affect the reliability of the analysis, the remaining duplicates were removed to ensure that the final dataset contains only unique records."""
+    # Step 10 — final validation
+    validate(df,        label="df (unscaled)")
+    validate(df_scaled, label="df_scaled")
 
-# Check remaining duplicates
-print("Duplicates before removal:", df.duplicated().sum())
+    print(f"\n[build_features] Done.")
+    print(f"  df        — original scale : {df.shape}")
+    print(f"  df_scaled — standardised   : {df_scaled.shape}")
 
-# Remove duplicates
-df = df.drop_duplicates()
+    return df, df_scaled, scaler
 
-# Verify removal
-print("Duplicates after removal:", df.duplicated().sum())
 
-"""Conclusion: The dataset underwent a comprehensive preprocessing process to improve data quality and consistency. Missing numerical values were handled using median imputation to reduce the influence of extreme values, while categorical values were standardized to ensure uniformity across records. Invalid values were corrected, data types were converted to appropriate formats, duplicates were removed, and outliers were treated to minimize their impact on the analysis. Additionally, new features were engineered to capture meaningful patterns and relationships within the data. As a result, the dataset is now cleaner, more reliable, and better prepared for analysis and machine learning applications."""
+# ── Run as standalone script ──────────────────────────────────────────────────
+if __name__ == "__main__":
+    df, df_scaled, scaler = build_features()
+
+    # Write both outputs to CSV for inspection / downstream use
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+    os.makedirs(out_dir, exist_ok=True)
+
+    df.to_csv(os.path.join(out_dir, "features.csv"), index=False)
+    df_scaled.to_csv(os.path.join(out_dir, "features_scaled.csv"), index=False)
+
+    print(f"\n[__main__] Saved features.csv and features_scaled.csv to {out_dir}")
+    print(df.head())
