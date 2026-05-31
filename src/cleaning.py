@@ -201,9 +201,8 @@ def fix_data_types(df: pd.DataFrame) -> pd.DataFrame:
 
     # CO_GasSensor — discrete ordinal scale (0-4), store as integer
     if "CO_GasSensor" in df.columns:
-        df["CO_GasSensor"] = df["CO_GasSensor"].astype(int)
-        print(f"[fix_data_types] CO_GasSensor converted to int "
-              f"(unique values: {sorted(df['CO_GasSensor'].unique())})")
+            df["CO_GasSensor"] = pd.to_numeric(df["CO_GasSensor"], errors="coerce").astype(int)
+            print(f"[fix_data_types] CO_GasSensor successfully converted to int.")
 
     print(f"[fix_data_types] Converted {len(categorical_cols)} columns to category dtype")
     return df
