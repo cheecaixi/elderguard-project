@@ -1,5 +1,7 @@
 # train.py
-# Training pipeline: loads data → builds features → splits → tunes → trains → saves.
+# Training pipeline: loads data → builds features → splits → SMOTE → tunes → trains → saves.
+# Uses HistGradientBoostingClassifier (supports class_weight) instead of GradientBoostingClassifier.
+# SMOTE applied after train/test split to oversample minority classes on training data only.
 #
 # Usage:
 #   python src/train.py
@@ -14,13 +16,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 from sklearn.model_selection import (
     train_test_split,
     GridSearchCV,
     StratifiedKFold,
     cross_val_score,
 )
+from imblearn.over_sampling import SMOTE
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import (
@@ -90,15 +93,17 @@ class ModelTrainer:
         Define base models with default parameters from config.py.
 
         Model selection justification:
-        - LogisticRegression  : Linear baseline. Fast and interpretable.
-                                Uses class_weight=balanced to handle imbalance.
-                                Requires scaled features.
-        - RandomForest        : Ensemble of decision trees. Robust to outliers
-                                and nonlinear sensor interactions. No scaling needed.
-                                class_weight=balanced handles minority High Activity class.
-        - GradientBoosting    : Sequential boosting on structured/tabular data.
-                                Iteratively corrects errors on minority class.
-                                Generally achieves best accuracy on tabular data.
+        - LogisticRegression          : Linear baseline. Fast and interpretable.
+                                        Uses class_weight=balanced to handle imbalance.
+                                        Requires scaled features.
+        - RandomForest                : Ensemble of decision trees. Robust to outliers
+                                        and nonlinear sensor interactions. No scaling needed.
+                                        class_weight=balanced handles minority High Activity class.
+        - HistGradientBoostingClassifier : Histogram-based gradient boosting. Faster than
+                                        GradientBoostingClassifier and supports class_weight=balanced
+                                        natively — critical for the high_activity minority class
+                                        (~11% of data). Generally achieves best accuracy on
+                                        structured/tabular data.
         """
         return {
             "logistic_regression": {
@@ -114,7 +119,7 @@ class ModelTrainer:
             },
 
             "gradient_boosting": {
-                "model": GradientBoostingClassifier(**GB_PARAMS),
+                "model": HistGradientBoostingClassifier(**GB_PARAMS),
                 "param_grid": GB_PARAM_GRID,
                 "needs_scaling": False,
             },
@@ -299,7 +304,45 @@ def run_training(
     np.save(os.path.join(save_dir, "y_test.npy"), y_test)
     print(f"[split] Test split saved to {save_dir}/")
 
-    # ── Step 4: Scale — fit on train only (no data leakage) ──────────────────
+    # ── Step 4: SMOTE — oversample minority classes on train set only ───────────
+    # Applied AFTER split so test set remains untouched (no data leakage).
+    # SMOTE synthesises new samples for minority classes by interpolating
+    # between existing neighbours, rather than simply duplicating rows.
+    # This directly addresses high_activity being only ~11% of the dataset.
+    #
+    # Note: CO_GasSensor is stored as pandas Int64 (nullable integer) from
+    # cleaning.py. SMOTE operates in float space and cannot cast back to Int64,
+    # raising a TypeError. We cast Int64 columns to float64 before resampling
+    # and restore them to int64 afterward.
+    int64_cols = [c for c in X_train.columns if X_train[c].dtype == "Int64"]
+    X_train[int64_cols] = X_train[int64_cols].astype("float64")
+    X_test[int64_cols]  = X_test[int64_cols].astype("float64")
+
+    # Guard: SMOTE requires zero NaNs — fill any residual missing values
+    # with column medians before resampling. These should be zero after
+    # cleaning.py, but a defensive fill prevents cryptic downstream errors.
+    nan_before = X_train.isnull().sum().sum()
+    if nan_before > 0:
+        print(f"[smote] WARNING — {nan_before} NaN(s) found before SMOTE, filling with column medians")
+    X_train = X_train.fillna(X_train.median(numeric_only=True))
+    X_test  = X_test.fillna(X_train.median(numeric_only=True))
+
+    smote = SMOTE(random_state=RANDOM_STATE)
+    X_train_arr, y_train = smote.fit_resample(X_train, y_train)
+    X_train = pd.DataFrame(X_train_arr, columns=X_train.columns)
+
+    # Round and restore synthesised CO_GasSensor values to int64
+    # (SMOTE interpolates between neighbours, producing floats like 2.3;
+    #  rounding preserves the discrete 0-4 ordinal scale)
+    if int64_cols:
+        X_train[int64_cols] = X_train[int64_cols].round().astype("int64")
+        X_test[int64_cols]  = X_test[int64_cols].astype("int64")
+
+    unique, counts = np.unique(y_train, return_counts=True)
+    print(f"[smote] Resampled train distribution: {dict(zip(unique.tolist(), counts.tolist()))}")
+    print(f"[smote] Train size after SMOTE: {X_train.shape[0]:,} rows")
+
+    # ── Step 5: Scale — fit on SMOTE-resampled train only (no data leakage) ────
     X_train_scaled, scaler = scale_features(X_train, scaler=None)
     X_test_scaled,  _       = scale_features(X_test,  scaler=scaler)
 
@@ -308,11 +351,11 @@ def run_training(
         os.path.join(save_dir, "X_test_scaled.parquet"), index=False
     )
 
-    # ── Step 5: Train ─────────────────────────────────────────────────────────
+    # ── Step 6: Train ─────────────────────────────────────────────────────────
     trainer = ModelTrainer(random_state=RANDOM_STATE, tune=tune)
     trainer.train_all(X_train, X_train_scaled, y_train)
 
-    # ── Step 6: Save ─────────────────────────────────────────────────────────
+    # ── Step 7: Save ─────────────────────────────────────────────────────────
     # Passing list(X_train.columns) directly to prevent the NameError 
     trainer.save_all(save_dir,scaler,feature_names,activity_map,)
 

@@ -36,12 +36,12 @@ RF_PARAMS = {
     "random_state":    RANDOM_STATE,
     "n_jobs":          -1,
 }
-# XGBoost
+# Gradient Boosting
 GB_PARAMS = {
-    "n_estimators":  200,
+    "max_iter":      200,        
     "learning_rate": 0.1,
     "max_depth":     5,
-    "subsample":     0.8,
+    "class_weight":  "balanced",
     "random_state":  RANDOM_STATE,
 }
 # Logistic Regression
@@ -65,7 +65,7 @@ RF_PARAM_GRID = {
 }
 
 GB_PARAM_GRID = {
-    "n_estimators":  [100, 200],
+    "max_iter":      [100, 200],  
     "learning_rate": [0.05, 0.1],
     "max_depth":     [3, 5],
 }
