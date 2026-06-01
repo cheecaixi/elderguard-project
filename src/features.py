@@ -32,10 +32,11 @@ def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
     print(f"[drop_unused_columns] Dropped columns: {cols_to_drop}")
     return df
 
+
 # ── 2. Feature Engineering ────────────────────────────────────────────────────
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    This creates new features from existing columns.
+    Create domain-informed features from existing sensor columns.
 
     Features created:
     - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
@@ -48,12 +49,12 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
                             and both will be tested in the pipeline.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
                             Preserves natural order for linear models.
-    - Is_Night            : Binary flag — 1 if Time of Day is night.
-                            Night is strongly associated with low activity
-                            (sleeping), making this an explicit and simple split.
-    - High_CO             : Binary flag — 1 if CO_GasSensor >= 3.
-                            Highlights elevated CO readings that may indicate
-                            poor ventilation or unsafe living conditions.
+
+    Removed:
+    - Is_Night : redundant — Time of Day one-hot encoding already produces
+                 a night dummy column in encode_categorical().
+    - High_CO  : redundant — CO_GasSensor (0-4 integer) is already in the
+                 feature set; the model can learn the threshold itself.
     """
 
     # CO2 sensor disagreement
@@ -67,7 +68,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     mos_cols = [
         "MetalOxideSensor_Unit1",
         "MetalOxideSensor_Unit2",
-        "MetalOxideSensor_Unit3", 
+        "MetalOxideSensor_Unit3",
         "MetalOxideSensor_Unit4",
     ]
     if all(c in df.columns for c in mos_cols):
@@ -77,26 +78,17 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
         light_order = {
-            "very_dim": 0, 
-            "dim": 1, 
+            "very_dim": 0,
+            "dim": 1,
             "moderate": 2,
-            "bright": 3,  
+            "bright": 3,
             "very_bright": 4,
         }
         df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
         print("[engineer_features] Created Ambient_Light_Ordinal")
 
-    # Night binary flag
-    if "Time of Day" in df.columns:
-        df["Is_Night"] = (df["Time of Day"] == "night").astype(int)
-        print("[engineer_features] Created Is_Night")
-
-    # High CO binary flag
-    if "CO_GasSensor" in df.columns:
-        df["High_CO"] = (df["CO_GasSensor"] >= 3).astype(int)
-        print("[engineer_features] Created High_CO")
-
     return df
+
 
 # ── 3. Encode Categorical Features ───────────────────────────────────────────
 def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
@@ -126,6 +118,7 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
         print("[encode_categorical] Dropped Ambient Light Level (ordinal version kept)")
 
     return df
+
 
 # ── 4. Encode Target ──────────────────────────────────────────────────────────
 def encode_target(df: pd.DataFrame) -> tuple:
@@ -176,6 +169,7 @@ def activity_map_inv(activity_map: dict, code: int) -> str:
     """Return the class name for a given encoded integer."""
     return {v: k for k, v in activity_map.items()}.get(code, str(code))
 
+
 # ── 5. Scale Numerical Features ──────────────────────────────────────────────
 def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.DataFrame, StandardScaler]:
     """
@@ -196,7 +190,6 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.
 
     Excluded from scaling:
     - One-hot encoded dummy columns (already 0/1)
-    - Is_Night, High_CO (binary flags)
     - Ambient_Light_Ordinal (ordinal integer)
     - CO_GasSensor (discrete ordinal 0-4)
     """
@@ -249,7 +242,7 @@ def build_features(df: pd.DataFrame) -> tuple:
 
     Steps:
         1. Drop unused columns (Session ID)
-        2. Engineer new features (CO2_Disagreement, MOS_Mean, etc.)
+        2. Engineer new features (CO2_Disagreement, MOS_Mean, Ambient_Light_Ordinal)
         3. One-hot encode nominal categoricals
         4. Separate and encode target column
         5. Validate final feature set
@@ -274,6 +267,7 @@ def build_features(df: pd.DataFrame) -> tuple:
     feature_names = list(X.columns)
     print(f"\n[build_features] Done — {len(feature_names)} features, {len(y):,} samples\n")
     return X, y, activity_map, feature_names
+
 
 # ── Run as standalone script ──────────────────────────────────────────────────
 if __name__ == "__main__":
