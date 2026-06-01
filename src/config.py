@@ -59,19 +59,17 @@ LR_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [100, 200],
-    "max_depth":        [None, 10, 20],
-    "min_samples_leaf": [1, 2],
+    "n_estimators": [100, 200],
+    "max_depth": [None, 10],
 }
 
 GB_PARAM_GRID = {
-    "max_iter":      [100, 200],  
     "learning_rate": [0.05, 0.1],
-    "max_depth":     [3, 5],
+    "max_depth": [3, 5],
 }
 
 LR_PARAM_GRID = {
-    "C": [0.01, 0.1, 1.0, 10.0],
+    "C": [0.1, 1.0, 10.0],
 }
 
 # ── Cross Validation ───────────────────────────────────────────
