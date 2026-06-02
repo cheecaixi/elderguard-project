@@ -27,115 +27,168 @@ def load_test_data(model_dir: str, use_scaled: bool = True):
     """Load test data saved by train.py."""
     X_path = os.path.join(model_dir, "X_test_scaled.parquet") if use_scaled else os.path.join(model_dir, "X_test.parquet")
     y_path = os.path.join(model_dir, "y_test.npy")
-    
+
     X_test = pd.read_parquet(X_path)
     y_test = np.load(y_path)
     print(f"[load] {X_test.shape[0]:,} test samples, {'scaled' if use_scaled else 'unscaled'}")
     return X_test, y_test
 
 
-# ── 2. Load Model ─────────────────────────────────────────────────────────────
+# ── 2. Load Train Data ────────────────────────────────────────────────────────
+def load_train_data(model_dir: str, use_scaled: bool = True):
+    """Load train data saved by train.py."""
+    X_path = os.path.join(model_dir, "X_train_scaled.parquet") if use_scaled else os.path.join(model_dir, "X_train.parquet")
+    y_path = os.path.join(model_dir, "y_train.npy")
+
+    X_train = pd.read_parquet(X_path)
+    y_train = np.load(y_path)
+    print(f"[load] {X_train.shape[0]:,} train samples, {'scaled' if use_scaled else 'unscaled'}")
+    return X_train, y_train
+
+
+# ── 3. Load Model ─────────────────────────────────────────────────────────────
 def load_model(model_dir: str, model_name: str):
     """Load trained model and artefacts."""
     model = joblib.load(os.path.join(model_dir, f"{model_name}.joblib"))
-    
+
     with open(os.path.join(model_dir, "feature_names.json"), "r") as f:
         features = json.load(f)
     with open(os.path.join(model_dir, "activity_map.json"), "r") as f:
         rev_map = {v: k for k, v in json.load(f).items()}
-    
+
     return model, features, rev_map
 
 
-# ── 3. Evaluate ───────────────────────────────────────────────────────────────
+# ── 4. Print Metrics ──────────────────────────────────────────────────────────
+def print_metrics(y_true: np.ndarray, y_pred: np.ndarray, label: str) -> dict:
+    """Print accuracy, macro F1, classification report and confusion matrix for a split."""
+    acc      = accuracy_score(y_true, y_pred)
+    f1_macro = f1_score(y_true, y_pred, average="macro")
+
+    print(f"\n  ── {label} ──────────────────────────────────")
+    print(f"  Accuracy:    {acc:.4f}")
+    print(f"  Macro F1:    {f1_macro:.4f}")
+    print(f"\n  Classification Report:")
+    print(classification_report(y_true, y_pred,
+                                target_names=["low", "moderate", "high"],
+                                digits=3))
+    cm = confusion_matrix(y_true, y_pred)
+    print(f"  Confusion Matrix:")
+    print(cm)
+
+    return {"accuracy": acc, "f1_macro": f1_macro, "cm": cm}
+
+
+# ── 5. Evaluate ───────────────────────────────────────────────────────────────
 def evaluate_model(model_dir: str, model_name: str) -> dict:
-    """Evaluate a single model on test data."""
+    """Evaluate a single model — prints TRAIN results then TEST results."""
     print(f"\n{'='*50}\n  {model_name.upper()}\n{'='*50}")
-    
-    # Load data (LR needs scaling, tree models don't)
+
     needs_scaling = model_name == "logistic_regression"
-    X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaling)
-    
+
     # Load model
     model, features, rev_map = load_model(model_dir, model_name)
-    X_test = X_test[features]  # ensure correct column order
-    
-    # Predict
-    y_pred = model.predict(X_test)
-    y_pred_proba = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
-    
-    # Metrics
-    acc = accuracy_score(y_test, y_pred)
-    f1_macro = f1_score(y_test, y_pred, average="macro")
-    
-    print(f"Accuracy:    {acc:.4f}")
-    print(f"Macro F1:    {f1_macro:.4f}")
-    print(f"\nClassification Report:")
-    print(classification_report(y_test, y_pred, 
-                                target_names=["low", "moderate", "high"], 
-                                digits=3))
-    
-    cm = confusion_matrix(y_test, y_pred)
-    print(f"\nConfusion Matrix:")
-    print(cm)
-    
-    # Plot confusion matrix
+
+    # ── BEFORE: training set ──────────────────────────────────────────────────
+    X_train, y_train = load_train_data(model_dir, use_scaled=needs_scaling)
+    X_train          = X_train[features]
+    y_train_pred     = model.predict(X_train)
+    train_res        = print_metrics(y_train, y_train_pred, label="BEFORE  (Train Set)")
+
+    # Plot train confusion matrix
     plt.figure(figsize=(7, 5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=['Low','Mod','High'], 
-                yticklabels=['Low','Mod','High'])
-    plt.title(f'{model_name.replace("_"," ").title()}')
+    sns.heatmap(train_res["cm"], annot=True, fmt='d', cmap='Greens',
+                xticklabels=['Low', 'Mod', 'High'],
+                yticklabels=['Low', 'Mod', 'High'])
+    plt.title(f'{model_name.replace("_", " ").title()} — Train')
     plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, f"cm_{model_name}.png"), dpi=120)
+    plt.savefig(os.path.join(model_dir, f"cm_{model_name}_train.png"), dpi=120)
     plt.show()
-    
-    return {"name": model_name, "accuracy": acc, "f1_macro": f1_macro, "cm": cm}
+
+    # ── AFTER: test set ───────────────────────────────────────────────────────
+    X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaling)
+    X_test         = X_test[features]
+    y_test_pred    = model.predict(X_test)
+    test_res       = print_metrics(y_test, y_test_pred, label="AFTER   (Test Set) ")
+
+    # Plot test confusion matrix
+    plt.figure(figsize=(7, 5))
+    sns.heatmap(test_res["cm"], annot=True, fmt='d', cmap='Blues',
+                xticklabels=['Low', 'Mod', 'High'],
+                yticklabels=['Low', 'Mod', 'High'])
+    plt.title(f'{model_name.replace("_", " ").title()} — Test')
+    plt.tight_layout()
+    plt.savefig(os.path.join(model_dir, f"cm_{model_name}_test.png"), dpi=120)
+    plt.show()
+
+    return {
+        "name":           model_name,
+        "train_accuracy": train_res["accuracy"],
+        "train_f1_macro": train_res["f1_macro"],
+        "test_accuracy":  test_res["accuracy"],
+        "test_f1_macro":  test_res["f1_macro"],
+        "cm_train":       train_res["cm"],
+        "cm_test":        test_res["cm"],
+    }
 
 
-# ── 4. Evaluate All ───────────────────────────────────────────────────────────
+# ── 6. Evaluate All ───────────────────────────────────────────────────────────
 def evaluate_all(model_dir: str) -> pd.DataFrame:
     """Evaluate all saved models."""
-    models = [f.replace(".joblib", "") for f in os.listdir(model_dir) 
+    models = [f.replace(".joblib", "") for f in os.listdir(model_dir)
               if f.endswith(".joblib") and f != "scaler.joblib"]
-    
+
     results = {}
     for name in models:
         results[name] = evaluate_model(model_dir, name)
-    
+
     # Summary
     print(f"\n{'='*50}\n  SUMMARY\n{'='*50}")
-    for name, res in sorted(results.items(), key=lambda x: x[1]["f1_macro"], reverse=True):
-        print(f"  {name:<25} Acc={res['accuracy']:.4f}  F1={res['f1_macro']:.4f}")
-    
+    print(f"  {'Model':<25} {'Train Acc':>10} {'Train F1':>10} {'Test Acc':>10} {'Test F1':>10}")
+    print(f"  {'-'*65}")
+    for name, res in sorted(results.items(), key=lambda x: x[1]["test_f1_macro"], reverse=True):
+        print(f"  {name:<25} {res['train_accuracy']:>10.4f} {res['train_f1_macro']:>10.4f} "
+              f"{res['test_accuracy']:>10.4f} {res['test_f1_macro']:>10.4f}")
+
     # Comparison plot
     if len(results) > 1:
-        plt.figure(figsize=(8, 5))
-        names = list(results.keys())
-        scores = [results[n]["f1_macro"] for n in names]
-        bars = plt.bar(names, scores, color=['#2E86AB', '#A23B72', '#F18F01'])
-        plt.ylim(0, 1)
-        plt.ylabel("Macro F1 Score")
-        plt.title("Model Comparison")
-        plt.xticks(rotation=15)
-        for bar, score in zip(bars, scores):
-            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
-                    f'{score:.3f}', ha='center', fontweight='bold')
+        names       = list(results.keys())
+        train_f1s   = [results[n]["train_f1_macro"] for n in names]
+        test_f1s    = [results[n]["test_f1_macro"]  for n in names]
+        x           = np.arange(len(names))
+        width       = 0.35
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+        bars1 = ax.bar(x - width/2, train_f1s, width, label="Train F1", color='#4CAF50')
+        bars2 = ax.bar(x + width/2, test_f1s,  width, label="Test F1",  color='#2E86AB')
+        ax.set_ylim(0, 1)
+        ax.set_ylabel("Macro F1 Score")
+        ax.set_title("Model Comparison — Train vs Test")
+        ax.set_xticks(x)
+        ax.set_xticklabels(names, rotation=15)
+        ax.legend()
+        for bar, score in zip(bars1, train_f1s):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{score:.3f}', ha='center', fontweight='bold', fontsize=9)
+        for bar, score in zip(bars2, test_f1s):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{score:.3f}', ha='center', fontweight='bold', fontsize=9)
         plt.tight_layout()
         plt.savefig(os.path.join(model_dir, "comparison.png"), dpi=120)
         plt.show()
-    
+
     return pd.DataFrame(results).T
 
 
-# ── 5. Main ───────────────────────────────────────────────────────────────────
+# ── 7. Main ───────────────────────────────────────────────────────────────────
 def run_evaluation(model_dir: str = MODEL_SAVE_DIR, model_name: str = None) -> None:
     print(f"\n{'='*50}\n  EVALUATION PIPELINE — START\n{'='*50}")
-    
+
     if model_name:
         evaluate_model(model_dir, model_name)
     else:
         evaluate_all(model_dir)
-    
+
     print(f"\n{'='*50}\n  EVALUATION PIPELINE — COMPLETE\n{'='*50}")
 
 
