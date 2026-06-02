@@ -86,6 +86,9 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         }
         df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
         print("[engineer_features] Created Ambient_Light_Ordinal")
+        print("[engineer_features] Light level mapping applied:")
+        for label, code in light_order.items():
+            print(f"    {label} → {code}")
 
     return df
 
