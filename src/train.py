@@ -14,6 +14,9 @@ import argparse
 import joblib
 import numpy as np
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, cross_val_score
@@ -116,26 +119,49 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
         print(f"\n{'='*50}\n  {name.upper().replace('_', ' ')}\n{'='*50}")
 
         if tune:
+            # ── BEFORE tuning ─────────────────────────────
+            print(f"\n  --- BEFORE TUNING ---")
+            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING)
+            cfg["model"].fit(X, y_train)
+            y_pred = cfg["model"].predict(X)
+            print(f"[before] CV {CV_SCORING}    : {before_scores.mean():.4f} (+/- {before_scores.std():.4f})")
+            print(f"[before] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
+            print(f"[before] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
+            print(f"[before] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+            print(f"[before] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+
+            # ── AFTER tuning ──────────────────────────────
             fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name)
+            print(f"\n  --- AFTER TUNING ---")
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING)
+            y_pred = fitted.predict(X)
+            print(f"[tune] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
+            print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
+            print(f"[tune] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
+            print(f"[tune] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+            print(f"[tune] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+
+            # ── Improvement ───────────────────────────────
+            print(f"\n  --- IMPROVEMENT ---")
+            print(f"[tune] CV {CV_SCORING} delta : {after_scores.mean() - before_scores.mean():+.4f}")
+
         else:
             print("[train] Tuning skipped — using default params")
             fitted = cfg["model"].fit(X, y_train)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING)
+            y_pred = fitted.predict(X)
+            print(f"[train] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
+            print(f"[train] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
+            print(f"[train] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
+            print(f"[train] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+            print(f"[train] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
 
-        scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING)
-        print(f"[train] CV {CV_SCORING}: {scores.mean():.4f} (+/- {scores.std():.4f})")
-
-        # Quick train-set sanity check — not a substitute for evaluate.py
-        y_pred = fitted.predict(X)
-        print(f"[train] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
-        print(f"[train] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
-        print(f"[train] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
-        print(f"[train] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
-        print(f"[train] Note: train metrics will be optimistic — use evaluate.py for true test-set performance")
+        print(f"\n[train] Note: train metrics will be optimistic — use evaluate.py for true test-set performance")
 
         trained[name] = {
             "model":         fitted,
             "needs_scaling": cfg["needs_scaling"],
-            "cv_mean":       float(scores.mean()),
+            "cv_mean":       float(after_scores.mean()),
         }
 
     # Print ranking
