@@ -1,0 +1,4 @@
+- Group name : Team Cai Xi , Amanda and Yi Xin 
+- Group members name : Cai Xi , Amanda and Yi Xin 
+- Cai Xi wrote cleaning, config and train files
+- Amanda wrote    
