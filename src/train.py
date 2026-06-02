@@ -223,21 +223,11 @@ def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: b
     # 2. Split
     X_train, X_test, y_train, y_test = split_data(X, y, save_dir)
 
-    # Save train split for evaluate.py
-    X_train.to_parquet(os.path.join(save_dir, "X_train.parquet"), index=False)
-    X_train_scaled.to_parquet(os.path.join(save_dir, "X_train_scaled.parquet"), index=False)
-    np.save(os.path.join(save_dir, "y_train.npy"), y_train)
-
     # 3. Scale — fit on train only, transform both
     X_train_scaled, scaler = scale_features(X_train)
     X_test_scaled,  _      = scale_features(X_test, scaler=scaler)
     X_train_scaled = X_train_scaled.fillna(0)
     X_test_scaled  = X_test_scaled.fillna(0)
-
-    # Save all splits for evaluate.py  ← ADD HERE
-    X_train.to_parquet(os.path.join(save_dir, "X_train.parquet"), index=False)
-    X_train_scaled.to_parquet(os.path.join(save_dir, "X_train_scaled.parquet"), index=False)
-    np.save(os.path.join(save_dir, "y_train.npy"), y_train)
     X_test_scaled.to_parquet(os.path.join(save_dir, "X_test_scaled.parquet"), index=False)
 
     # 4. Train

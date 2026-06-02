@@ -93,7 +93,7 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     X_train, y_train = load_train_data(model_dir, use_scaled=needs_scaling)
     X_train          = X_train[features]
     y_train_pred     = model.predict(X_train)
-    train_res        = print_metrics(y_train, y_train_pred, label="BEFORE  (Train Set)")
+    train_res = print_metrics(y_train, y_train_pred, label="TRAIN SET (after tuning)")
 
     # Plot train confusion matrix
     plt.figure(figsize=(7, 5))
@@ -109,7 +109,7 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaling)
     X_test         = X_test[features]
     y_test_pred    = model.predict(X_test)
-    test_res       = print_metrics(y_test, y_test_pred, label="AFTER   (Test Set) ")
+    test_res = print_metrics(y_test, y_test_pred, label="TEST SET  (after tuning)")
 
     # Plot test confusion matrix
     plt.figure(figsize=(7, 5))
