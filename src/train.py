@@ -121,7 +121,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
         if tune:
             # ── BEFORE tuning ─────────────────────────────
             print(f"\n  --- BEFORE TUNING ---")
-            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING)
+            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1)
             cfg["model"].fit(X, y_train)
             y_pred = cfg["model"].predict(X)
             print(f"[before] CV {CV_SCORING}    : {before_scores.mean():.4f} (+/- {before_scores.std():.4f})")
@@ -133,7 +133,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
             # ── AFTER tuning ──────────────────────────────
             fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name)
             print(f"\n  --- AFTER TUNING ---")
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1)
             y_pred = fitted.predict(X)
             print(f"[tune] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")

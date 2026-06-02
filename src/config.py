@@ -66,10 +66,9 @@ RF_PARAM_GRID = {
 }
 
 GB_PARAM_GRID = {
-    "max_iter":      [100, 200, 300],
-    "learning_rate": [0.01, 0.05, 0.1], 
-    "max_depth":     [3, 5, 7],
-    "l2_regularization": [0.0, 0.1, 1.0],
+    "max_iter":      [100, 200],    # drop 300
+    "learning_rate": [0.05, 0.1],   # drop 0.01
+    "max_depth":     [3, 5],        # keep as is
 }
 
 LR_PARAM_GRID = {
@@ -78,5 +77,5 @@ LR_PARAM_GRID = {
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 10      # number of folds for StratifiedKFold
+CV_FOLDS   = 5      # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
