@@ -11,9 +11,11 @@ import sys
 import json
 import argparse
 import joblib
+import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+matplotlib.use('WebAgg')
 import seaborn as sns
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score
@@ -103,7 +105,6 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     plt.title(f'{model_name.replace("_", " ").title()} — Train')
     plt.tight_layout()
     plt.savefig(os.path.join(model_dir, f"cm_{model_name}_train.png"), dpi=120)
-    plt.show()
 
     # ── AFTER: test set ───────────────────────────────────────────────────────
     X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaling)
@@ -119,7 +120,6 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     plt.title(f'{model_name.replace("_", " ").title()} — Test')
     plt.tight_layout()
     plt.savefig(os.path.join(model_dir, f"cm_{model_name}_test.png"), dpi=120)
-    plt.show()
 
     return {
         "name":           model_name,
@@ -175,7 +175,6 @@ def evaluate_all(model_dir: str) -> pd.DataFrame:
                     f'{score:.3f}', ha='center', fontweight='bold', fontsize=9)
         plt.tight_layout()
         plt.savefig(os.path.join(model_dir, "comparison.png"), dpi=120)
-        plt.show()
 
     return pd.DataFrame(results).T
 
@@ -191,10 +190,12 @@ def run_evaluation(model_dir: str = MODEL_SAVE_DIR, model_name: str = None) -> N
 
     print(f"\n{'='*50}\n  EVALUATION PIPELINE — COMPLETE\n{'='*50}")
 
-    plt.close('all')
-
+    plt.show(block=False)
 
 if __name__ == "__main__":
+    import warnings
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", default=MODEL_SAVE_DIR)
     parser.add_argument("--model", default=None)
