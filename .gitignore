@@ -1,8 +1,8 @@
 # Database
 data/gas_monitoring.db
 
-# Saved models
-saved_model/
+# # Saved models
+# saved_model/
 
 # Python cache
 __pycache__/

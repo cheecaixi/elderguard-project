@@ -1,0 +1,4 @@
+{
+  "best_model": "gradient_boosting",
+  "cv_score": 0.5394713236738141
+}
