@@ -30,9 +30,11 @@ TUNE_MODELS = True
 # ── Default Model Parameters (used when TUNE_MODELS = False) ──
 # Random Forest
 RF_PARAMS = {
-    "class_weight":    "balanced",
-    "random_state":    RANDOM_STATE,
-    "n_jobs":          -1,
+    "n_estimators":     200,
+    "min_samples_leaf": 2,
+    "class_weight":     "balanced_subsample",
+    "random_state":     RANDOM_STATE,
+    "n_jobs":           -1,
 }
 
 # Gradient Boosting
@@ -57,20 +59,24 @@ LR_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators": [100, 200],
-    "max_depth": [None, 10],
+    "n_estimators":     [100, 200, 300],
+    "max_depth":        [None, 10, 20],
+    "min_samples_leaf": [1, 2, 4],     
+    "max_features":     ["sqrt", "log2"], 
 }
 
 GB_PARAM_GRID = {
-    "max_iter":      [100, 200],
-    "learning_rate": [0.05, 0.1],
-    "max_depth":     [3, 5],
+    "max_iter":      [100, 200, 300],
+    "learning_rate": [0.01, 0.05, 0.1], 
+    "max_depth":     [3, 5, 7],
+    "l2_regularization": [0.0, 0.1, 1.0],
 }
 
 LR_PARAM_GRID = {
-    "C": [0.1, 1.0, 10.0],
+    "C":      [0.01, 0.1, 1.0, 10.0],   
+    "solver": ["lbfgs", "saga"],          
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 5      # number of folds for StratifiedKFold
+CV_FOLDS   = 10      # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
