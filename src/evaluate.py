@@ -191,6 +191,8 @@ def run_evaluation(model_dir: str = MODEL_SAVE_DIR, model_name: str = None) -> N
 
     print(f"\n{'='*50}\n  EVALUATION PIPELINE — COMPLETE\n{'='*50}")
 
+    plt.close('all')
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

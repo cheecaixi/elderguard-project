@@ -68,7 +68,7 @@ def get_models() -> dict:
 # ── Split ─────────────────────────────────────────────────────────────────────
 def split_data(X, y, save_dir: str):
     """
-    Stratified train/test split. Test split saved to disk for evaluate.py.
+    Stratified train/test split. Train and Test splits saved to disk for evaluate.py.
     stratify=y preserves class distribution across both splits.
     """
     X_train, X_test, y_train, y_test = train_test_split(
@@ -77,8 +77,15 @@ def split_data(X, y, save_dir: str):
     print(f"[split] Train: {X_train.shape[0]:,} rows | Test: {X_test.shape[0]:,} rows")
 
     os.makedirs(save_dir, exist_ok=True)
+    
+    # ── SAVE TEST SET ──
     X_test.to_parquet(os.path.join(save_dir, "X_test.parquet"), index=False)
     np.save(os.path.join(save_dir, "y_test.npy"), y_test)
+    
+    # ── ADDED: SAVE TRAIN SET ──
+    X_train.to_parquet(os.path.join(save_dir, "X_train.parquet"), index=False)
+    np.save(os.path.join(save_dir, "y_train.npy"), y_train)
+    
     return X_train, X_test, y_train, y_test
 
 
@@ -228,6 +235,9 @@ def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: b
     X_test_scaled,  _      = scale_features(X_test, scaler=scaler)
     X_train_scaled = X_train_scaled.fillna(0)
     X_test_scaled  = X_test_scaled.fillna(0)
+    
+    # ── ADDED: Save scaled training data for logistic regression evaluation ──
+    X_train_scaled.to_parquet(os.path.join(save_dir, "X_train_scaled.parquet"), index=False)
     X_test_scaled.to_parquet(os.path.join(save_dir, "X_test_scaled.parquet"), index=False)
 
     # 4. Train
