@@ -135,7 +135,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
         if tune:
             # ── BEFORE tuning ─────────────────────────────
             print(f"\n  --- BEFORE TUNING ---")
-            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
+            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, params=fit_kwargs)
             cfg["model"].fit(X, y_train, **fit_kwargs)
             y_pred = cfg["model"].predict(X)
             print(f"[before] CV {CV_SCORING}    : {before_scores.mean():.4f} (+/- {before_scores.std():.4f})")
@@ -147,7 +147,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
             # ── AFTER tuning ──────────────────────────────
             fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
             print(f"\n  --- AFTER TUNING ---")
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, fit_params=fit_kwargs)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, params=fit_kwargs)
             y_pred = fitted.predict(X)
             print(f"[tune] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
@@ -162,7 +162,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
         else:
             print("[train] Tuning skipped — using default params")
             fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, fit_params=fit_kwargs)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, params=fit_kwargs)
             y_pred = fitted.predict(X)
             print(f"[train] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[train] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
