@@ -46,11 +46,9 @@ def clean_activity_labels(df: pd.DataFrame) -> pd.DataFrame:
         "highactivity":     "high_activity",
         "moderateactivity": "moderate_activity",
     }
-    df['Activity Level'] = df['Activity Level'].str.strip().str.lower().apply(
-    lambda x: 'low_activity' if 'low' in str(x)
-    else 'moderate_activity' if 'moderate' in str(x)
-    else 'high_activity' if 'high' in str(x)
-    else None
+    df["Activity Level"] = df["Activity Level"].replace(label_map)
+    print(f"[clean_activity_labels] Unique labels: {df['Activity Level'].unique()}")
+    return df
 )
 
 def clean_hvac_labels(df: pd.DataFrame) -> pd.DataFrame:
