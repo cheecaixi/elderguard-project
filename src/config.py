@@ -51,7 +51,7 @@ XGB_PARAMS = {
 # Decision Tree 
 DT_PARAMS = {
     "max_depth":         6,              
-    "min_samples_leaf":  5,
+    "min_samples_leaf":  15,
     "class_weight":      "balanced",     
     "random_state":      RANDOM_STATE,
 }
@@ -62,9 +62,9 @@ DT_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [100, 200],
-    "max_depth":        [6, 8, 10],
-    "min_samples_leaf": [20, 40, 60],     
+    "n_estimators":     [150, 300],
+    "max_depth":        [10, 12, 14],
+    "min_samples_leaf": [10, 15, 25],     
     "max_features":     ["sqrt"]      
 }
 
@@ -79,7 +79,8 @@ XGB_PARAM_GRID = {
 DT_PARAM_GRID = {
     "max_depth":        [4, 6, 8, 12],
     "min_samples_leaf": [5, 10, 20, 50],
-    "criterion":        ["gini", "entropy"]
+    "criterion":        ["gini", "entropy"],
+    "class_weight": ["balanced"]
 }
 
 # ── Cross Validation ───────────────────────────────────────────
