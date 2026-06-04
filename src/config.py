@@ -62,9 +62,9 @@ DT_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [150, 250],
-    "max_depth":        [10, 12],
-    "min_samples_leaf": [15, 25],     
+    "n_estimators":     [150, 300],
+    "max_depth":        [10, 12, 14],
+    "min_samples_leaf": [10, 15, 25],     
     "max_features":     ["sqrt"]      
 }
 
