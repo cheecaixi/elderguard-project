@@ -39,13 +39,13 @@ RF_PARAMS = {
 
 # XGBoost
 XGB_PARAMS = {
-    "n_estimators":     50,
-    "max_depth":        3,
-    "learning_rate":    0.1,
-    "tree_method":      "hist",
-    "eval_metric":      "mlogloss",
-    "random_state":     RANDOM_STATE,
-    "n_jobs":           -1,
+    "n_estimators":  200,
+    "max_depth":     5,
+    "learning_rate": 0.1,
+    "tree_method":   "hist",
+    "eval_metric":   "mlogloss",
+    "random_state":  RANDOM_STATE,
+    "n_jobs":        -1,
 }
 
 # Logistic Regression
@@ -61,16 +61,17 @@ LR_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators": [100, 200],
-    "max_depth": [6, 8, None],
+    "n_estimators":     [100, 200],
+    "max_depth":        [None, 20],
     "min_samples_leaf": [1, 2, 4],
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators": [50, 100],
-    "max_depth": [3, 4],
+    "n_estimators":  [100, 200],
+    "max_depth":     [4, 5],
     "learning_rate": [0.05, 0.1],
-    "subsample": [0.8],
+    "subsample":     [0.8],
+    "colsample_bytree": [0.8],
 }
 
 LR_PARAM_GRID = {
