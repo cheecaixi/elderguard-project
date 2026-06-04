@@ -73,8 +73,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     ]
     if all(c in df.columns for c in mos_cols):
         df["MOS_Mean"] = df[mos_cols].mean(axis=1)
-        df = df.drop(columns=["MetalOxideSensor_Unit1", "MetalOxideSensor_Unit3"])
-        print("[engineer_features] Created MOS_Mean, dropped Unit1 and Unit3")
+        print("[engineer_features] Created MOS_Mean")
 
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
@@ -202,6 +201,7 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.
         "Temperature", "Humidity",
         "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
          "MetalOxideSensor_Unit2", "MetalOxideSensor_Unit4",
+        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit3",
         "CO2_Disagreement", "MOS_Mean",
     ]]
 
