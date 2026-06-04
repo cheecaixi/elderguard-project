@@ -17,10 +17,10 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
+from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, cross_val_score
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -30,30 +30,29 @@ from src.config import (
     TUNE_MODELS,
     RF_PARAMS,  RF_PARAM_GRID,
     XGB_PARAMS, XGB_PARAM_GRID,
-    LR_PARAMS,  LR_PARAM_GRID,
+    DT_PARAMS,  DT_PARAM_GRID,
     CV_FOLDS, CV_SCORING,
 )
 from src.cleaning import clean_data
 from src.features import build_features, scale_features
 
-
 # ── Models ────────────────────────────────────────────────────────
-
 def get_models() -> dict:
     """
     Define the three models used in the pipeline.
 
-    - LogisticRegression          : linear baseline, interpretable, needs scaling
-    - RandomForestClassifier      : robust to outliers and nonlinear interactions
-    - XGBClassifier          : gradient boosting with sample_weight for class
-                           imbalance handling; generally strongest on tabular data
+    - DecisionTreeClassifier      : tree-based baseline, handles non-linear boundaries,
+                                    intuitive, needs no scaling
+    - RandomForestClassifier      : ensemble of trees robust to outliers and non-linear interactions
+    - XGBClassifier               : gradient boosting with sample_weight for class imbalance handling; 
+                                    generally strongest on tabular data
     All use class_weight=balanced to handle the ~58/28/14% class imbalance.
     """
     return {
-        "logistic_regression": {
-            "model": LogisticRegression(**LR_PARAMS),
-            "param_grid": LR_PARAM_GRID,
-            "needs_scaling": True,
+        "decision_tree": {
+            "model": DecisionTreeClassifier(**DT_PARAMS),
+            "param_grid": DT_PARAM_GRID,
+            "needs_scaling": False,
             "use_sample_weight": False,
         },
         "random_forest": {
@@ -93,7 +92,6 @@ def split_data(X, y, save_dir: str):
     
     return X_train, X_test, y_train, y_test
 
-
 # ── Tune ──────────────────────────────────────────────────────────
 
 def tune_model(model, param_grid: dict, X_train, y_train, name: str, fit_kwargs={}):
@@ -113,7 +111,6 @@ def tune_model(model, param_grid: dict, X_train, y_train, name: str, fit_kwargs=
     print(f"[tune] {name} best params : {gs.best_params_}")
     print(f"[tune] {name} best CV {CV_SCORING}: {gs.best_score_:.4f}")
     return gs.best_estimator_
-
 
 # ── Train ─────────────────────────────────────────────────────────
 def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
@@ -147,7 +144,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
             # ── AFTER tuning ──────────────────────────────
             fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
             print(f"\n  --- AFTER TUNING ---")
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, fit_params=fit_kwargs)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
             y_pred = fitted.predict(X)
             print(f"[tune] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
@@ -161,8 +158,9 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
 
         else:
             print("[train] Tuning skipped — using default params")
-            fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, fit_params=fit_kwargs)
+            fitted = cfg["model"]
+            fitted.fit(X, y_train, **fit_kwargs)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
             y_pred = fitted.predict(X)
             print(f"[train] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[train] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
@@ -187,7 +185,6 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
 
     return trained
 
-
 # ── Save ──────────────────────────────────────────────────────────────────────
 
 def save_artefacts(trained: dict, save_dir: str, scaler, feature_names: list, activity_map: dict) -> None:
@@ -196,7 +193,7 @@ def save_artefacts(trained: dict, save_dir: str, scaler, feature_names: list, ac
 
     Files saved:
     - <model_name>.joblib  : trained sklearn model
-    - scaler.joblib        : fitted StandardScaler (for LR inference)
+    - scaler.joblib        : fitted StandardScaler (retained for pipeline compatibility)
     - feature_names.json   : column order for consistent inference
     - activity_map.json    : class encoding (for decoding predictions)
     - best_model.json      : best model name by CV macro F1
@@ -223,9 +220,7 @@ def save_artefacts(trained: dict, save_dir: str, scaler, feature_names: list, ac
     print(f"[save] artefacts → {save_dir}/")
     print(f"[save] best model: {best} (CV {CV_SCORING} = {trained[best]['cv_mean']:.4f})")
 
-
 # ── Pipeline ──────────────────────────────────────────────────────────────────
-
 def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: bool = TUNE_MODELS) -> None:
     sep = "=" * 50
     print(f"\n{sep}\n  TRAINING PIPELINE — START")
@@ -234,20 +229,20 @@ def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: b
     # 1. Clean + features
     X, y, activity_map, feature_names = build_features(clean_data(db_path))
 
-    # 2. Split
+    # 2. Split (Saves unscaled X_train.parquet and X_test.parquet automatically)
     X_train, X_test, y_train, y_test = split_data(X, y, save_dir)
 
-    # 3. Scale — fit on train only, transform both
+    # 3. Scale — Fit on train only, transform both (Kept for downstream file compatibility)
     X_train_scaled, scaler = scale_features(X_train)
-    X_test_scaled,  _      = scale_features(X_test, scaler=scaler)
+    X_test_scaled, _       = scale_features(X_test, scaler=scaler)
     X_train_scaled = X_train_scaled.fillna(0)
     X_test_scaled  = X_test_scaled.fillna(0)
     
-    # ── ADDED: Save scaled training data for logistic regression evaluation ──
+    # Save scaled frames to avoid breaking evaluation pipeline file checks
     X_train_scaled.to_parquet(os.path.join(save_dir, "X_train_scaled.parquet"), index=False)
     X_test_scaled.to_parquet(os.path.join(save_dir, "X_test_scaled.parquet"), index=False)
 
-    # 4. Train
+    # 4. Train (Now routes unscaled matrices to your Tree/Boosting architectures)
     trained = train_models(X_train, X_train_scaled, y_train, tune)
 
     # 5. Save
@@ -257,9 +252,7 @@ def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: b
     print(f"  Artefacts saved to : {save_dir}")
     print(f"  Run evaluate.py to compute test-set metrics.\n{sep}\n")
 
-
 # ── CLI ───────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train ML models on gas monitoring data")
     parser.add_argument("--db",       
@@ -276,4 +269,3 @@ if __name__ == "__main__":
     run_training(db_path=args.db, 
                  save_dir=args.save_dir, 
                  tune=not args.no_tune)
-
