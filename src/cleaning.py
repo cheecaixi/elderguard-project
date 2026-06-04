@@ -49,7 +49,6 @@ def clean_activity_labels(df: pd.DataFrame) -> pd.DataFrame:
     df["Activity Level"] = df["Activity Level"].replace(label_map)
     print(f"[clean_activity_labels] Unique labels: {df['Activity Level'].unique()}")
     return df
-)
 
 def clean_hvac_labels(df: pd.DataFrame) -> pd.DataFrame:
     """Standardise HVAC Operation Mode labels to lowercase."""
