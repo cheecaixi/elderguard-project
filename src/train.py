@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", message="`sklearn.utils.parallel.delayed` shou
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from sklearn.utils.class_weight import compute_sample_weight
+from collections import Counter
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, cross_val_score
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -125,7 +125,19 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
     models = get_models()
     trained = {}
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
-    sample_weights = compute_sample_weight("balanced", y_train)
+    
+    counts = Counter(y_train)
+    total = sum(counts.values())
+    
+    # Compute smoothed weights using square root mapping
+    smoothed_weights_map = {
+        cls: (total / (3.0 * np.sqrt(count))) for cls, count in counts.items()
+    }
+    # Normalize so that the minimum weight remains 1.0
+    min_w = min(smoothed_weights_map.values())
+    weights_map = {k: v / min_w for k, v in smoothed_weights_map.items()}
+
+    sample_weights = np.array([weights_map[label] for label in y_train])
 
     for name, cfg in models.items():
         X = X_train_scaled if cfg["needs_scaling"] else X_train
