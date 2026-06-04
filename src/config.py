@@ -69,9 +69,9 @@ RF_PARAM_GRID = {
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators":     [150, 200],
-    "max_depth":        [5, 6],       
-    "learning_rate":    [0.04, 0.06],
+    "n_estimators":     [150, 250],
+    "max_depth":        [5, 6, 7],        
+    "learning_rate":    [0.03, 0.06],
     "subsample":        [0.8],
     "colsample_bytree": [0.8]
 }
