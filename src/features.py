@@ -203,11 +203,12 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.
     - CO_GasSensor (discrete ordinal 0-4)
     """
     scale_cols = [col for col in df.columns if col in [
-        "Temperature", "Humidity",
-        "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
-        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
-        "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
-        "CO2_Disagreement", "MOS_Mean",
+        "Temperature",
+        "Humidity",
+        "CO2_InfraredSensor",
+        "CO2_ElectroChemicalSensor",
+        "CO2_Disagreement",
+        "MOS_Mean",
     ]]
 
     df_scaled = df.copy()
