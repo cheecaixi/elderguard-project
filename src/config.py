@@ -59,10 +59,11 @@ LR_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [150, 200],
-    "max_depth":        [5, 8, 12],
-    "min_samples_leaf": [4, 8, 12],     
-    "max_features":     ["sqrt"], 
+    "n_estimators":     [200, 300],
+    "max_depth":        [4, 6, 8],      
+    "min_samples_leaf": [8, 12, 16],      
+    "max_features":     ["sqrt", 0.5],
+    "max_samples":      [0.7, 0.8],       
 }
 
 GB_PARAM_GRID = {
