@@ -45,8 +45,8 @@ def get_models() -> dict:
 
     - LogisticRegression          : linear baseline, interpretable, needs scaling
     - RandomForestClassifier      : robust to outliers and nonlinear interactions
-    - HistGradientBoostingClassifier : histogram-based boosting, supports class_weight,
-                                      generally strongest on tabular data
+    - XGBClassifier          : gradient boosting with sample_weight for class
+                           imbalance handling; generally strongest on tabular data
     All use class_weight=balanced to handle the ~58/28/14% class imbalance.
     """
     return {
@@ -54,11 +54,13 @@ def get_models() -> dict:
             "model": LogisticRegression(**LR_PARAMS),
             "param_grid": LR_PARAM_GRID,
             "needs_scaling": True,
+            "use_sample_weight": False,
         },
         "random_forest": {
             "model": RandomForestClassifier(**RF_PARAMS),
             "param_grid": RF_PARAM_GRID,
             "needs_scaling": False,
+            "use_sample_weight": False,
         },
         "xgboost": {
             "model": XGBClassifier(**XGB_PARAMS),

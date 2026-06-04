@@ -71,15 +71,9 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         "MetalOxideSensor_Unit3",
         "MetalOxideSensor_Unit4",
     ]
-    
     if all(c in df.columns for c in mos_cols):
         df["MOS_Mean"] = df[mos_cols].mean(axis=1)
-    
-        # Drop original MOS sensors after creating the average
-        df = df.drop(columns=mos_cols)
-    
         print("[engineer_features] Created MOS_Mean")
-        print("[engineer_features] Dropped original MOS sensor columns")
 
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
