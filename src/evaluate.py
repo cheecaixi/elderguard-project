@@ -86,13 +86,12 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     """Evaluate a single model — prints TRAIN results then TEST results."""
     print(f"\n{'='*50}\n  {model_name.upper()}\n{'='*50}")
 
-    needs_scaling = model_name == "logistic_regression"
-
     # Load model
     model, features, rev_map = load_model(model_dir, model_name)
 
     # ── BEFORE: training set ──────────────────────────────────────────────────
-    X_train, y_train = load_train_data(model_dir, use_scaled=needs_scaling)
+    # All current models (decision_tree, random_forest, xgboost) use unscaled data
+    X_train, y_train = load_train_data(model_dir, use_scaled=False)
     X_train          = X_train[features]
     y_train_pred     = model.predict(X_train)
     train_res = print_metrics(y_train, y_train_pred, label="TRAIN SET (after tuning)")
@@ -107,7 +106,7 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     plt.savefig(os.path.join(model_dir, f"cm_{model_name}_train.png"), dpi=120)
 
     # ── AFTER: test set ───────────────────────────────────────────────────────
-    X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaling)
+    X_test, y_test = load_test_data(model_dir, use_scaled=False)
     X_test         = X_test[features]
     y_test_pred    = model.predict(X_test)
     test_res = print_metrics(y_test, y_test_pred, label="TEST SET  (after tuning)")
@@ -152,10 +151,12 @@ def evaluate_all(model_dir: str) -> pd.DataFrame:
 
     # Comparison plot
     if len(results) > 1:
-        names       = list(results.keys())
-        train_f1s   = [results[n]["train_f1_macro"] for n in names]
-        test_f1s    = [results[n]["test_f1_macro"]  for n in names]
-        x           = np.arange(len(names))
+        raw_names   = list(results.keys())
+        clean_names = [n.replace("_", " ").title() for n in raw_names]
+        
+        train_f1s   = [results[n]["train_f1_macro"] for n in raw_names]
+        test_f1s    = [results[n]["test_f1_macro"]  for n in raw_names]
+        x           = np.arange(len(raw_names))
         width       = 0.35
 
         fig, ax = plt.subplots(figsize=(9, 5))
@@ -165,7 +166,7 @@ def evaluate_all(model_dir: str) -> pd.DataFrame:
         ax.set_ylabel("Macro F1 Score")
         ax.set_title("Model Comparison — Train vs Test")
         ax.set_xticks(x)
-        ax.set_xticklabels(names, rotation=15)
+        ax.set_xticklabels(clean_names, rotation=15)  # FIXED: Uses clean formatting on chart labels
         ax.legend()
         for bar, score in zip(bars1, train_f1s):
             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
@@ -175,8 +176,6 @@ def evaluate_all(model_dir: str) -> pd.DataFrame:
                     f'{score:.3f}', ha='center', fontweight='bold', fontsize=9)
         plt.tight_layout()
         plt.savefig(os.path.join(model_dir, "comparison.png"), dpi=120)
-
-    return pd.DataFrame(results).T
 
 
 # ── 7. Main ───────────────────────────────────────────────────────────────────
