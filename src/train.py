@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message="`sklearn.utils.parallel.delayed` should be used with")
 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
