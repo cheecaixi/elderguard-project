@@ -44,6 +44,7 @@ XGB_PARAMS = {
     "learning_rate":    0.05,
     "subsample":        0.8,
     "colsample_bytree": 0.8,
+    "min_child_weight": 3,
     "tree_method":      "hist",
     "eval_metric":      "mlogloss",
     "random_state":     RANDOM_STATE,
@@ -72,10 +73,11 @@ RF_PARAM_GRID = {
 
 XGB_PARAM_GRID = {
     "n_estimators":     [200, 300],
-    "max_depth":        [3, 4, 6],
-    "learning_rate":    [0.01, 0.05],
-    "subsample":        [0.7, 0.8],
+    "max_depth":        [3, 4, 5],
+    "learning_rate":    [0.01, 0.05, 0.1],
+    "subsample":        [0.7, 0.8, 0.9],
     "colsample_bytree": [0.7, 0.8],
+    "min_child_weight": [1, 3, 5],
 }
 
 LR_PARAM_GRID = {
