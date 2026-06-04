@@ -132,7 +132,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
         if tune:
             # ── BEFORE tuning ─────────────────────────────
             print(f"\n  --- BEFORE TUNING ---")
-            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
+            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, params=fit_kwargs)
             cfg["model"].fit(X, y_train, **fit_kwargs)
             y_pred = cfg["model"].predict(X)
             print(f"[before] CV {CV_SCORING}    : {before_scores.mean():.4f} (+/- {before_scores.std():.4f})")

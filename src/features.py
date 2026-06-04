@@ -85,6 +85,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             "very_bright": 4,
         }
         df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
+        df["Ambient_Light_Ordinal"] = df["Ambient_Light_Ordinal"].astype(int) # Ensure integer type for ordinal feature
         print("[engineer_features] Created Ambient_Light_Ordinal")
         print("[engineer_features] Light level mapping applied:")
         for label, code in light_order.items():
@@ -199,8 +200,8 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.
     scale_cols = [col for col in df.columns if col in [
         "Temperature", "Humidity",
         "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
-        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
-        "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
+         "MetalOxideSensor_Unit2", "MetalOxideSensor_Unit4",
+        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit3",
         "CO2_Disagreement", "MOS_Mean",
     ]]
 
