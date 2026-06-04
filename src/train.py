@@ -69,6 +69,7 @@ def get_models() -> dict:
         },
     }
 
+
 # ── Split ─────────────────────────────────────────────────────────────────────
 def split_data(X, y, save_dir: str):
     """
@@ -92,8 +93,8 @@ def split_data(X, y, save_dir: str):
     
     return X_train, X_test, y_train, y_test
 
-# ── Tune ──────────────────────────────────────────────────────────
 
+# ── Tune ──────────────────────────────────────────────────────────
 def tune_model(model, param_grid: dict, X_train, y_train, name: str, fit_kwargs={}):
     """
     Tuning using GridSearchCV with StratifiedKFold.
@@ -110,7 +111,8 @@ def tune_model(model, param_grid: dict, X_train, y_train, name: str, fit_kwargs=
     gs.fit(X_train, y_train, **fit_kwargs)
     print(f"[tune] {name} best params : {gs.best_params_}")
     print(f"[tune] {name} best CV {CV_SCORING}: {gs.best_score_:.4f}")
-    return gs.best_estimator_
+    return gs.best_estimator_, gs.best_score_
+
 
 # ── Train ─────────────────────────────────────────────────────────
 def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
@@ -126,27 +128,52 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
 
     for name, cfg in models.items():
         X = X_train_scaled if cfg["needs_scaling"] else X_train
-        fit_kwargs = {"sample_weight": sample_weights} if cfg.get("use_sample_weight") else {}
+        use_weights = cfg.get("use_sample_weight", False)
+        fit_kwargs = {"sample_weight": sample_weights} if use_weights else {}
         print(f"\n{'='*50}\n  {name.upper().replace('_', ' ')}\n{'='*50}")
 
-        if tune:
-            # ── BEFORE tuning ─────────────────────────────
-            print(f"\n  --- BEFORE TUNING ---")
-            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, params=fit_kwargs)
-            cfg["model"].fit(X, y_train, **fit_kwargs)
-            y_pred = cfg["model"].predict(X)
-            print(f"[before] CV {CV_SCORING}    : {before_scores.mean():.4f} (+/- {before_scores.std():.4f})")
-            print(f"[before] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
-            print(f"[before] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
-            print(f"[before] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
-            print(f"[before] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+        # ── MANUAL BASELINE K-FOLD CV (Avoids cross_val_score signature crashes) ──
+        print(f"\n  --- BEFORE TUNING ---")
+        before_cv_scores = []
+        
+        for train_idx, val_idx in cv.split(X, y_train):
+            # Slicing the training split data
+            X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_tr, y_val = y_train[train_idx], y_train[val_idx]
+            
+            # Clone the base model architecture cleanly
+            from sklearn.base import clone
+            fold_model = clone(cfg["model"])
+            
+            # Slice sample weights specifically for the XGBoost training split fold
+            if use_weights:
+                fold_weights = sample_weights[train_idx]
+                fold_model.fit(X_tr, y_tr, sample_weight=fold_weights)
+            else:
+                fold_model.fit(X_tr, y_tr)
+                
+            fold_pred = fold_model.predict(X_val)
+            before_cv_scores.append(f1_score(y_val, fold_pred, average='macro'))
+            
+        before_cv_mean = np.mean(before_cv_scores)
+        before_cv_std = np.std(before_cv_scores)
 
+        # Fit full baseline model
+        cfg["model"].fit(X, y_train, **fit_kwargs)
+        y_pred = cfg["model"].predict(X)
+        print(f"[before] CV {CV_SCORING}    : {before_cv_mean:.4f} (+/- {before_cv_std:.4f})")
+        print(f"[before] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
+        print(f"[before] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
+        print(f"[before] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+        print(f"[before] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+
+        if tune:
             # ── AFTER tuning ──────────────────────────────
-            fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
+            fitted, best_cv_score = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
             print(f"\n  --- AFTER TUNING ---")
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
+            
             y_pred = fitted.predict(X)
-            print(f"[tune] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
+            print(f"[tune] CV {CV_SCORING}    : {best_cv_score:.4f}")
             print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
             print(f"[tune] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
             print(f"[tune] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
@@ -154,26 +181,20 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
 
             # ── Improvement ───────────────────────────────
             print(f"\n  --- IMPROVEMENT ---")
-            print(f"[tune] CV {CV_SCORING} delta : {after_scores.mean() - before_scores.mean():+.4f}")
-
+            print(f"[tune] CV {CV_SCORING} delta : {best_cv_score - before_cv_mean:+.4f}")
+            after_cv_mean = best_cv_score
+        
         else:
             print("[train] Tuning skipped — using default params")
             fitted = cfg["model"]
-            fitted.fit(X, y_train, **fit_kwargs)
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
-            y_pred = fitted.predict(X)
-            print(f"[train] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
-            print(f"[train] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
-            print(f"[train] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
-            print(f"[train] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
-            print(f"[train] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
+            after_cv_mean = before_cv_mean
 
         print(f"\n[train] Note: train metrics will be optimistic — use evaluate.py for true test-set performance")
 
         trained[name] = {
             "model":         fitted,
             "needs_scaling": cfg["needs_scaling"],
-            "cv_mean":       float(after_scores.mean()),
+            "cv_mean":       float(after_cv_mean),
         }
 
     # Print ranking
@@ -184,6 +205,7 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
         print(f"  {rank}. {name:<25} CV F1 = {cfg['cv_mean']:.4f}")
 
     return trained
+
 
 # ── Save ──────────────────────────────────────────────────────────────────────
 
@@ -220,6 +242,7 @@ def save_artefacts(trained: dict, save_dir: str, scaler, feature_names: list, ac
     print(f"[save] artefacts → {save_dir}/")
     print(f"[save] best model: {best} (CV {CV_SCORING} = {trained[best]['cv_mean']:.4f})")
 
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: bool = TUNE_MODELS) -> None:
     sep = "=" * 50
@@ -251,6 +274,7 @@ def run_training(db_path: str = DB_PATH, save_dir: str = MODEL_SAVE_DIR, tune: b
     print(f"\n{sep}\n  TRAINING PIPELINE — COMPLETE")
     print(f"  Artefacts saved to : {save_dir}")
     print(f"  Run evaluate.py to compute test-set metrics.\n{sep}\n")
+
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
