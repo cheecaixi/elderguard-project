@@ -62,14 +62,15 @@ LR_PARAMS = {
 
 RF_PARAM_GRID = {
     "n_estimators": [100, 200],
-    "max_depth": [6, 8],
-    "min_samples_leaf": [8, 12],
+    "max_depth": [6, 8, None],
+    "min_samples_leaf": [1, 2, 4],
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators":  [50, 100],
-    "max_depth":     [3, 4],
+    "n_estimators": [50, 100],
+    "max_depth": [3, 4],
     "learning_rate": [0.05, 0.1],
+    "subsample": [0.8],
 }
 
 LR_PARAM_GRID = {
