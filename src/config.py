@@ -61,11 +61,9 @@ LR_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [200, 300],
-    "max_depth":        [4, 6, 8],      
-    "min_samples_leaf": [8, 12, 16],      
-    "max_features":     ["sqrt", 0.5],
-    "max_samples":      [0.7, 0.8],       
+    "n_estimators": [100, 200],
+    "max_depth": [6, 8],
+    "min_samples_leaf": [8, 12],
 }
 
 XGB_PARAM_GRID = {
@@ -80,5 +78,5 @@ LR_PARAM_GRID = {
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 5      # number of folds for StratifiedKFold
+CV_FOLDS   = 3      # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
