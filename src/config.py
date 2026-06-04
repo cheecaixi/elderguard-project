@@ -37,13 +37,17 @@ RF_PARAMS = {
     "n_jobs":           -1,
 }
 
-# Gradient Boosting
-GB_PARAMS = {
-    "max_iter":     200,
-    "learning_rate": 0.1,
-    "max_depth":    5,
-    "class_weight": "balanced",
-    "random_state": RANDOM_STATE,
+# XGBoost
+XGB_PARAMS = {
+    "n_estimators":     300,
+    "max_depth":        4,
+    "learning_rate":    0.05,
+    "subsample":        0.8,
+    "colsample_bytree": 0.8,
+    "tree_method":      "hist",
+    "eval_metric":      "mlogloss",
+    "random_state":     RANDOM_STATE,
+    "n_jobs":           -1,
 }
 
 # Logistic Regression
@@ -66,10 +70,12 @@ RF_PARAM_GRID = {
     "max_samples":      [0.7, 0.8],       
 }
 
-GB_PARAM_GRID = {
-    "max_iter":      [80, 120],  
-    "learning_rate": [0.01, 0.05],   
-    "max_depth":     [2, 3],        
+XGB_PARAM_GRID = {
+    "n_estimators":     [200, 300],
+    "max_depth":        [3, 4, 6],
+    "learning_rate":    [0.01, 0.05],
+    "subsample":        [0.7, 0.8],
+    "colsample_bytree": [0.7, 0.8],
 }
 
 LR_PARAM_GRID = {

@@ -1,4 +1,4 @@
 {
   "best_model": "random_forest",
-  "cv_score": 0.5395994284780581
+  "cv_score": 0.5228588702049701
 }

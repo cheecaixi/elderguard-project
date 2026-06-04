@@ -18,7 +18,9 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.utils.class_weight import compute_sample_weight
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, cross_val_score
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -27,7 +29,7 @@ from src.config import (
     DB_PATH, TEST_SIZE, RANDOM_STATE, MODEL_SAVE_DIR,
     TUNE_MODELS,
     RF_PARAMS,  RF_PARAM_GRID,
-    GB_PARAMS,  GB_PARAM_GRID,
+    XGB_PARAMS, XGB_PARAM_GRID,
     LR_PARAMS,  LR_PARAM_GRID,
     CV_FOLDS, CV_SCORING,
 )
@@ -58,10 +60,11 @@ def get_models() -> dict:
             "param_grid": RF_PARAM_GRID,
             "needs_scaling": False,
         },
-        "gradient_boosting": {
-            "model": HistGradientBoostingClassifier(**GB_PARAMS),
-            "param_grid": GB_PARAM_GRID,
+        "xgboost": {
+            "model": XGBClassifier(**XGB_PARAMS),
+            "param_grid": XGB_PARAM_GRID,
             "needs_scaling": False,
+            "use_sample_weight": True,
         },
     }
 
@@ -91,7 +94,7 @@ def split_data(X, y, save_dir: str):
 
 # ── Tune ──────────────────────────────────────────────────────────
 
-def tune_model(model, param_grid: dict, X_train, y_train, name: str):
+def tune_model(model, param_grid: dict, X_train, y_train, name: str, fit_kwargs={}):
     """
     Tuning using GridSearchCV with StratifiedKFold.
 
@@ -104,7 +107,7 @@ def tune_model(model, param_grid: dict, X_train, y_train, name: str):
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
     gs = GridSearchCV(model, param_grid, cv=cv, scoring=CV_SCORING, n_jobs=-1, verbose=0)
     
-    gs.fit(X_train, y_train)
+    gs.fit(X_train, y_train, **fit_kwargs)
     print(f"[tune] {name} best params : {gs.best_params_}")
     print(f"[tune] {name} best CV {CV_SCORING}: {gs.best_score_:.4f}")
     return gs.best_estimator_
@@ -120,16 +123,18 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
     models = get_models()
     trained = {}
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+    sample_weights = compute_sample_weight("balanced", y_train)
 
     for name, cfg in models.items():
         X = X_train_scaled if cfg["needs_scaling"] else X_train
+        fit_kwargs = {"sample_weight": sample_weights} if cfg.get("use_sample_weight") else {}
         print(f"\n{'='*50}\n  {name.upper().replace('_', ' ')}\n{'='*50}")
 
         if tune:
             # ── BEFORE tuning ─────────────────────────────
             print(f"\n  --- BEFORE TUNING ---")
-            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1)
-            cfg["model"].fit(X, y_train)
+            before_scores = cross_val_score(cfg["model"], X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1, fit_params=fit_kwargs)
+            cfg["model"].fit(X, y_train, **fit_kwargs)
             y_pred = cfg["model"].predict(X)
             print(f"[before] CV {CV_SCORING}    : {before_scores.mean():.4f} (+/- {before_scores.std():.4f})")
             print(f"[before] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
@@ -138,9 +143,9 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
             print(f"[before] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
 
             # ── AFTER tuning ──────────────────────────────
-            fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name)
+            fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
             print(f"\n  --- AFTER TUNING ---")
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, n_jobs=-1)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, fit_params=fit_kwargs)
             y_pred = fitted.predict(X)
             print(f"[tune] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
@@ -154,8 +159,8 @@ def train_models(X_train, X_train_scaled, y_train, tune: bool) -> dict:
 
         else:
             print("[train] Tuning skipped — using default params")
-            fitted = cfg["model"].fit(X, y_train)
-            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING)
+            fitted = tune_model(cfg["model"], cfg["param_grid"], X, y_train, name, fit_kwargs)
+            after_scores = cross_val_score(fitted, X, y_train, cv=cv, scoring=CV_SCORING, fit_params=fit_kwargs)
             y_pred = fitted.predict(X)
             print(f"[train] CV {CV_SCORING}    : {after_scores.mean():.4f} (+/- {after_scores.std():.4f})")
             print(f"[train] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
