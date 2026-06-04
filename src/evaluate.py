@@ -1,200 +1,280 @@
-# evaluate.py
-# Loads saved models and computes test-set metrics on held-out data.
-# Shows confusion matrix, classification report, and per-class metrics.
+# features.py
+# Encodes, scales, and engineers features from the cleaned dataset.
+# Designed to run after cleaning.py — call build_features() directly,
+# or run as a standalone script to write features.csv to disk.
 
-# Usage:
-#   python src/evaluate.py                    # evaluate all models
-#   python src/evaluate.py --model random_forest  # evaluate specific model
+# NOTE: Scaling is intentionally excluded from build_features().
+#       Call scale_features() in train.py AFTER train/test split
+#       to ensure the scaler is fit on training data only (no data leakage).
 
+import pandas as pd
+import numpy as np
 import os
 import sys
-import json
-import argparse
-import joblib
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score
+from sklearn.preprocessing import StandardScaler
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.config import MODEL_SAVE_DIR
+from src.config import TARGET_COLUMN, DROP_COLUMNS
 
 
-# ── 1. Load Test Data ─────────────────────────────────────────────────────────
-def load_test_data(model_dir: str, use_scaled: bool = True):
-    """Load test data saved by train.py."""
-    X_path = os.path.join(model_dir, "X_test_scaled.parquet") if use_scaled else os.path.join(model_dir, "X_test.parquet")
-    y_path = os.path.join(model_dir, "y_test.npy")
+# ── 1. Drop Columns Not Needed for Modelling ─────────────────────────────────
+def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Drop Session ID before modelling.
 
-    X_test = pd.read_parquet(X_path)
-    y_test = np.load(y_path)
-    print(f"[load] {X_test.shape[0]:,} test samples, {'scaled' if use_scaled else 'unscaled'}")
-    return X_test, y_test
-
-
-# ── 2. Load Train Data ────────────────────────────────────────────────────────
-def load_train_data(model_dir: str, use_scaled: bool = True):
-    """Load train data saved by train.py."""
-    X_path = os.path.join(model_dir, "X_train_scaled.parquet") if use_scaled else os.path.join(model_dir, "X_train.parquet")
-    y_path = os.path.join(model_dir, "y_train.npy")
-
-    X_train = pd.read_parquet(X_path)
-    y_train = np.load(y_path)
-    print(f"[load] {X_train.shape[0]:,} train samples, {'scaled' if use_scaled else 'unscaled'}")
-    return X_train, y_train
+    Justification:
+    - Session ID is just an identifier retained through cleaning for
+      session-based imputation. The number itself contains no useful information.
+      Keeping it could allow the model to memorize sessions rather than learn patterns.
+    """
+    cols_to_drop = [col for col in ["Session ID"] if col in df.columns]
+    df = df.drop(columns=cols_to_drop)
+    print(f"[drop_unused_columns] Dropped columns: {cols_to_drop}")
+    return df
 
 
-# ── 3. Load Model ─────────────────────────────────────────────────────────────
-def load_model(model_dir: str, model_name: str):
-    """Load trained model and artefacts."""
-    model = joblib.load(os.path.join(model_dir, f"{model_name}.joblib"))
+# ── 2. Feature Engineering ────────────────────────────────────────────────────
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create domain-informed features from existing sensor columns.
 
-    with open(os.path.join(model_dir, "feature_names.json"), "r") as f:
-        features = json.load(f)
-    with open(os.path.join(model_dir, "activity_map.json"), "r") as f:
-        rev_map = {v: k for k, v in json.load(f).items()}
+    Features created:
+    - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
+                            Large disagreement signals sensor drift or rapid
+                            CO2 flux during high physical activity.
+    - MOS_Mean            : Mean of all 4 Metal Oxide Sensor units.
+                            Reduces per-sensor noise into a single VOC signal.
+                            EDA showed individual units (especially Unit2) are
+                            stronger predictors; MOS_Mean is kept alongside them
+                            and both will be tested in the pipeline.
+    - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
+                            Preserves natural order for linear models.
 
-    return model, features, rev_map
+    Removed:
+    - Is_Night : redundant — Time of Day one-hot encoding already produces
+                 a night dummy column in encode_categorical().
+    - High_CO  : redundant — CO_GasSensor (0-4 integer) is already in the
+                 feature set; the model can learn the threshold itself.
+    """
+
+    # CO2 sensor disagreement
+    if "CO2_InfraredSensor" in df.columns and "CO2_ElectroChemicalSensor" in df.columns:
+        df["CO2_Disagreement"] = (
+            df["CO2_InfraredSensor"] - df["CO2_ElectroChemicalSensor"]
+        ).abs()
+        print("[engineer_features] Created CO2_Disagreement")
+
+    # Mean of all MOS units
+    mos_cols = [
+        "MetalOxideSensor_Unit1",
+        "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit3",
+        "MetalOxideSensor_Unit4",
+    ]
+    if all(c in df.columns for c in mos_cols):
+        df["MOS_Mean"] = df[mos_cols].mean(axis=1)
+        print("[engineer_features] Created MOS_Mean")
+
+    # Ambient light ordinal encoding
+    if "Ambient Light Level" in df.columns:
+        light_order = {
+            "very_dim": 0,
+            "dim": 1,
+            "moderate": 2,
+            "bright": 3,
+            "very_bright": 4,
+        }
+        df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
+        print("[engineer_features] Created Ambient_Light_Ordinal")
+
+    return df
 
 
-# ── 4. Print Metrics ──────────────────────────────────────────────────────────
-def print_metrics(y_true: np.ndarray, y_pred: np.ndarray, label: str) -> dict:
-    """Print accuracy, macro F1, classification report and confusion matrix for a split."""
-    acc      = accuracy_score(y_true, y_pred)
-    f1_macro = f1_score(y_true, y_pred, average="macro")
+# ── 3. Encode Categorical Features ───────────────────────────────────────────
+def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Encode nominal categorical columns for model training.
 
-    print(f"\n  ── {label} ──────────────────────────────────")
-    print(f"  Accuracy:    {acc:.4f}")
-    print(f"  Macro F1:    {f1_macro:.4f}")
-    print(f"\n  Classification Report:")
-    print(classification_report(y_true, y_pred,
-                                target_names=["low", "moderate", "high"],
-                                digits=3))
-    cm = confusion_matrix(y_true, y_pred)
-    print(f"  Confusion Matrix:")
-    print(cm)
+    Strategy:
+    - Time of Day, HVAC Operation Mode: One-Hot Encoding.
+      Both are nominal with no natural numeric ordering.
+      drop_first=True removes one dummy per group to avoid
+      perfect multicollinearity (dummy variable trap).
+    - Ambient Light Level: dropped here — ordinal version already
+      created in engineer_features().
+    - CO_GasSensor: kept as integer (ordinal 0-4, no encoding needed).
+    - Activity Level: handled separately in encode_target().
+    """
+    ohe_cols = [
+        col for col in ["Time of Day", "HVAC Operation Mode"]
+        if col in df.columns
+    ]
+    df = pd.get_dummies(df, columns=ohe_cols, drop_first=True)
+    print(f"[encode_categorical] One-hot encoded: {ohe_cols}")
 
-    return {"accuracy": acc, "f1_macro": f1_macro, "cm": cm}
+    # Drop original Ambient Light Level — ordinal version already created
+    if "Ambient Light Level" in df.columns:
+        df = df.drop(columns=["Ambient Light Level"])
+        print("[encode_categorical] Dropped Ambient Light Level (ordinal version kept)")
+
+    return df
 
 
-# ── 5. Evaluate ───────────────────────────────────────────────────────────────
-def evaluate_model(model_dir: str, model_name: str) -> dict:
-    """Evaluate a single model — prints TRAIN results then TEST results."""
-    print(f"\n{'='*50}\n  {model_name.upper()}\n{'='*50}")
+# ── 4. Encode Target ──────────────────────────────────────────────────────────
+def encode_target(df: pd.DataFrame) -> tuple:
+    """
+    Separate and encode the target column with a fixed ordinal mapping.
 
-    needs_scaling = model_name == "logistic_regression"
+    A manual mapping is used instead of LabelEncoder to guarantee
+    consistent class ordering regardless of data sort order.
+    LabelEncoder sorts alphabetically, which gives:
+        high_activity=0, low_activity=1, moderate_activity=2
+    — inconsistent with the natural low→moderate→high ordering.
 
-    # Load model
-    model, features, rev_map = load_model(model_dir, model_name)
+    Fixed mapping:
+        low_activity      → 0
+        moderate_activity → 1
+        high_activity     → 2
 
-    # ── BEFORE: training set ──────────────────────────────────────────────────
-    X_train, y_train = load_train_data(model_dir, use_scaled=needs_scaling)
-    X_train          = X_train[features]
-    y_train_pred     = model.predict(X_train)
-    train_res = print_metrics(y_train, y_train_pred, label="TRAIN SET (after tuning)")
-
-    # Plot train confusion matrix
-    plt.figure(figsize=(7, 5))
-    sns.heatmap(train_res["cm"], annot=True, fmt='d', cmap='Greens',
-                xticklabels=['Low', 'Mod', 'High'],
-                yticklabels=['Low', 'Mod', 'High'])
-    plt.title(f'{model_name.replace("_", " ").title()} — Train')
-    plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, f"cm_{model_name}_train.png"), dpi=120)
-    plt.show()
-
-    # ── AFTER: test set ───────────────────────────────────────────────────────
-    X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaling)
-    X_test         = X_test[features]
-    y_test_pred    = model.predict(X_test)
-    test_res = print_metrics(y_test, y_test_pred, label="TEST SET  (after tuning)")
-
-    # Plot test confusion matrix
-    plt.figure(figsize=(7, 5))
-    sns.heatmap(test_res["cm"], annot=True, fmt='d', cmap='Blues',
-                xticklabels=['Low', 'Mod', 'High'],
-                yticklabels=['Low', 'Mod', 'High'])
-    plt.title(f'{model_name.replace("_", " ").title()} — Test')
-    plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, f"cm_{model_name}_test.png"), dpi=120)
-    plt.show()
-
-    return {
-        "name":           model_name,
-        "train_accuracy": train_res["accuracy"],
-        "train_f1_macro": train_res["f1_macro"],
-        "test_accuracy":  test_res["accuracy"],
-        "test_f1_macro":  test_res["f1_macro"],
-        "cm_train":       train_res["cm"],
-        "cm_test":        test_res["cm"],
+    Returns:
+    - df          : feature DataFrame with target column removed
+    - y           : encoded target as numpy array
+    - activity_map: encoding dict (invert for decoding predictions)
+    """
+    activity_map = {
+        "low_activity":      0,
+        "moderate_activity": 1,
+        "high_activity":     2,
     }
 
+    if df[TARGET_COLUMN].isnull().any():
+        raise ValueError(
+            f"[encode_target] Target column '{TARGET_COLUMN}' contains NaN. "
+            "Check cleaning.py."
+        )
 
-# ── 6. Evaluate All ───────────────────────────────────────────────────────────
-def evaluate_all(model_dir: str) -> pd.DataFrame:
-    """Evaluate all saved models."""
-    models = [f.replace(".joblib", "") for f in os.listdir(model_dir)
-              if f.endswith(".joblib") and f != "scaler.joblib"]
+    y = df[TARGET_COLUMN].map(activity_map).values
+    df = df.drop(columns=[TARGET_COLUMN])
 
-    results = {}
-    for name in models:
-        results[name] = evaluate_model(model_dir, name)
+    unique, counts = np.unique(y, return_counts=True)
+    dist = {activity_map_inv(activity_map, int(k)): int(v)
+            for k, v in zip(unique, counts)}
+    print(f"[encode_target] Mapping applied: {activity_map}")
+    print(f"[encode_target] Class distribution: {dist}")
 
-    # Summary
-    print(f"\n{'='*50}\n  SUMMARY\n{'='*50}")
-    print(f"  {'Model':<25} {'Train Acc':>10} {'Train F1':>10} {'Test Acc':>10} {'Test F1':>10}")
-    print(f"  {'-'*65}")
-    for name, res in sorted(results.items(), key=lambda x: x[1]["test_f1_macro"], reverse=True):
-        print(f"  {name:<25} {res['train_accuracy']:>10.4f} {res['train_f1_macro']:>10.4f} "
-              f"{res['test_accuracy']:>10.4f} {res['test_f1_macro']:>10.4f}")
-
-    # Comparison plot
-    if len(results) > 1:
-        names       = list(results.keys())
-        train_f1s   = [results[n]["train_f1_macro"] for n in names]
-        test_f1s    = [results[n]["test_f1_macro"]  for n in names]
-        x           = np.arange(len(names))
-        width       = 0.35
-
-        fig, ax = plt.subplots(figsize=(9, 5))
-        bars1 = ax.bar(x - width/2, train_f1s, width, label="Train F1", color='#4CAF50')
-        bars2 = ax.bar(x + width/2, test_f1s,  width, label="Test F1",  color='#2E86AB')
-        ax.set_ylim(0, 1)
-        ax.set_ylabel("Macro F1 Score")
-        ax.set_title("Model Comparison — Train vs Test")
-        ax.set_xticks(x)
-        ax.set_xticklabels(names, rotation=15)
-        ax.legend()
-        for bar, score in zip(bars1, train_f1s):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f'{score:.3f}', ha='center', fontweight='bold', fontsize=9)
-        for bar, score in zip(bars2, test_f1s):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f'{score:.3f}', ha='center', fontweight='bold', fontsize=9)
-        plt.tight_layout()
-        plt.savefig(os.path.join(model_dir, "comparison.png"), dpi=120)
-        plt.show()
-
-    return pd.DataFrame(results).T
+    return df, y, activity_map
 
 
-# ── 7. Main ───────────────────────────────────────────────────────────────────
-def run_evaluation(model_dir: str = MODEL_SAVE_DIR, model_name: str = None) -> None:
-    print(f"\n{'='*50}\n  EVALUATION PIPELINE — START\n{'='*50}")
+def activity_map_inv(activity_map: dict, code: int) -> str:
+    """Return the class name for a given encoded integer."""
+    return {v: k for k, v in activity_map.items()}.get(code, str(code))
 
-    if model_name:
-        evaluate_model(model_dir, model_name)
+
+# ── 5. Scale Numerical Features ──────────────────────────────────────────────
+def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.DataFrame, StandardScaler]:
+    """
+    Standardise continuous sensor readings using StandardScaler.
+
+    Justification:
+    - Required for Logistic Regression — sensitive to feature scale.
+    - Not required for Random Forest / Gradient Boosting (rank-based splits).
+    - Both scaled and unscaled versions are returned so each model
+      uses the appropriate input.
+
+    Usage:
+        # Training — fit on train data only:
+        X_train_scaled, scaler = scale_features(X_train)
+
+        # Inference / test — transform only, no refitting:
+        X_test_scaled, _ = scale_features(X_test, scaler=scaler)
+
+    Excluded from scaling:
+    - One-hot encoded dummy columns (already 0/1)
+    - Ambient_Light_Ordinal (ordinal integer)
+    - CO_GasSensor (discrete ordinal 0-4)
+    """
+    scale_cols = [col for col in df.columns if col in [
+        "Temperature", "Humidity",
+        "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
+        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
+        "CO2_Disagreement", "MOS_Mean",
+    ]]
+
+    df_scaled = df.copy()
+    if scaler is None:
+        scaler = StandardScaler()
+        df_scaled[scale_cols] = scaler.fit_transform(df[scale_cols])
+        print(f"[scale_features] Fitted new scaler on {len(scale_cols)} columns")
     else:
-        evaluate_all(model_dir)
+        df_scaled[scale_cols] = scaler.transform(df[scale_cols])
 
-    print(f"\n{'='*50}\n  EVALUATION PIPELINE — COMPLETE\n{'='*50}")
+    return df_scaled, scaler
 
 
+# ── 6. Validate ───────────────────────────────────────────────────────────────
+def validate(X: pd.DataFrame, y: np.ndarray, label: str = "") -> None:
+    """
+    Sanity check the final feature set before returning to train.py.
+    Catches silent data issues — missing values, infinite values,
+    unexpected class counts — before model training begins.
+    """
+    print(f"\n[validate] ── {label} ────────────────────────────")
+    print(f"  X shape         : {X.shape[0]:,} rows × {X.shape[1]} columns")
+    print(f"  y shape         : {y.shape[0]:,} labels")
+    print(f"  Missing values  : {X.isnull().sum().sum()}")
+    inf_count = np.isinf(X.select_dtypes(include=np.number)).sum().sum()
+    print(f"  Infinite values : {inf_count}")
+    unique, counts = np.unique(y, return_counts=True)
+    print(f"  y class counts  : {dict(zip(unique.tolist(), counts.tolist()))}")
+
+    if X.isnull().sum().sum() > 0:
+        missing_cols = X.columns[X.isnull().any()].tolist()
+        print(f"  WARNING — columns with missing values: {missing_cols}")
+    if inf_count > 0:
+        print(f"  WARNING — infinite values detected, check engineer_features()")
+
+
+# ── Master Pipeline ───────────────────────────────────────────────────────────
+def build_features(df: pd.DataFrame) -> tuple:
+    """
+    Full feature-engineering pipeline.
+
+    Steps:
+        1. Drop unused columns (Session ID)
+        2. Engineer new features (CO2_Disagreement, MOS_Mean, Ambient_Light_Ordinal)
+        3. One-hot encode nominal categoricals
+        4. Separate and encode target column
+        5. Validate final feature set
+
+    NOTE: Scaling is NOT done here. Call scale_features() in train.py
+          AFTER train/test split so the scaler is fit on training data only.
+
+    Returns:
+        X            — unscaled feature DataFrame
+        y            — encoded target labels (numpy array)
+        activity_map — encoding dict {class_name: int}
+        feature_names— ordered list of final feature column names
+    """
+    df = drop_unused_columns(df)
+    df = engineer_features(df)
+    df = encode_categorical(df)
+    df, y, activity_map = encode_target(df)
+
+    X = df.copy()
+    validate(X, y, label="Final feature set")
+
+    feature_names = list(X.columns)
+    print(f"\n[build_features] Done — {len(feature_names)} features, {len(y):,} samples\n")
+    return X, y, activity_map, feature_names
+
+
+# ── Run as standalone script ──────────────────────────────────────────────────
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model-dir", default=MODEL_SAVE_DIR)
-    parser.add_argument("--model", default=None)
-    args = parser.parse_args()
-    run_evaluation(args.model_dir, args.model)
+    from src.cleaning import clean_data
+    df_clean = clean_data()
+    X, y, activity_map, feature_names = build_features(df_clean)
+    print(f"X shape       : {X.shape}")
+    print(f"y shape       : {y.shape}")
+    print(f"Activity map  : {activity_map}")
+    print(f"Feature names : {feature_names}")
