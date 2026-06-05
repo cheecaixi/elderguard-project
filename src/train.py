@@ -19,12 +19,6 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message="`sklearn.utils.parallel.delayed` should be used with")
 warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
 
-try:
-    from imblearn.over_sampling import SMOTE
-    SMOTE_AVAILABLE = True
-except ImportError:
-    SMOTE_AVAILABLE = False
-
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
@@ -57,18 +51,18 @@ def get_models() -> dict:
     - XGBClassifier           : gradient boosting with sample_weight for class
                                 imbalance handling; generally strongest on tabular data.
 
-    All tree models use class_weight=balanced or sample_weight to handle the
-    ~58/28/14% class imbalance across low/moderate/high activity.
+    Tree models use native class weighting strategies to handle the
+    ~58/28/14% class imbalance cleanly without data distortion.
     """
     return {
         "decision_tree": {
-            "model": DecisionTreeClassifier(**DT_PARAMS),
+            "model": DecisionTreeClassifier(class_weight="balanced", random_state=RANDOM_STATE),
             "param_grid": DT_PARAM_GRID,
             "needs_scaling": False,
             "use_sample_weight": False,
         },
         "random_forest": {
-            "model": RandomForestClassifier(**RF_PARAMS),
+            "model": RandomForestClassifier(class_weight="balanced_subsample", random_state=RANDOM_STATE),
             "param_grid": RF_PARAM_GRID,
             "needs_scaling": False,
             "use_sample_weight": False,
@@ -103,53 +97,37 @@ def split_data(X: pd.DataFrame, y: np.ndarray, save_dir: str):
     return X_train, X_test, y_train, y_test
 
 
-# ── Tune ──────────────────────────────────────────────────────────
 def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
-               y_train: np.ndarray, name: str, fit_kwargs: dict = {}):
+               y_train: np.ndarray, name: str, use_sample_weight: bool, sample_weights=None):
     """
-    Hyperparameter tuning using GridSearchCV with StratifiedKFold.
-
-    Justification:
-    - GridSearchCV exhaustively searches all param_grid combinations.
-    - StratifiedKFold preserves class distribution in each fold — important
-      given the ~58% low activity imbalance.
+    - Hyperparameter tuning using GridSearchCV with StratifiedKFold.
+    - Safely integrates sample weights into cross-validation loops for boosting models.
     - Macro F1 used as scoring metric — consistent with evaluation.
     """
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
-    gs = GridSearchCV(model, param_grid, cv=cv, scoring=CV_SCORING,
-                      n_jobs=-1, verbose=0)
-    gs.fit(X_train, y_train, **fit_kwargs)
+    
+    fit_params = {}
+    if use_sample_weight and sample_weights is not None:
+        fit_params["sample_weight"] = sample_weights
+
+    gs = GridSearchCV(model, param_grid, cv=cv, scoring=CV_SCORING, n_jobs=-1, verbose=0)
+    gs.fit(X_train, y_train, **fit_params)
     print(f"[tune] {name} best params : {gs.best_params_}")
     print(f"[tune] {name} best CV {CV_SCORING}: {gs.best_score_:.4f}")
     return gs.best_estimator_, gs.best_score_
 
 
-# ── Train ─────────────────────────────────────────────────────────
 def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
                  y_train: np.ndarray, tune: bool) -> dict:
     """
-    Train all models. If tune=True, run GridSearchCV first.
-    Reports 3-fold CV score after training to check for overfitting.
+    Train all models using native class weights or smoothed sample weights.
     Returns trained model configs ranked by CV macro F1.
     """
     models = get_models()
     trained = {}
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
     
-    counts = Counter(y_train)
-    total = sum(counts.values())
-    
-    # Compute smoothed weights using square root mapping
-    smoothed_weights_map = {
-        cls: (total / (3.0 * np.sqrt(count))) for cls, count in counts.items()
-    }
-    # Normalize so that the minimum weight remains 1.0
-    min_w = min(smoothed_weights_map.values())
-    weights_map = {k: v / min_w for k, v in smoothed_weights_map.items()}
-
-    sample_weights = np.array([weights_map[label] for label in y_train])
-
-    # Build smoothed sample weights for XGBoost
+    # Compute clean, smoothed sample weights for XGBoost
     counts = Counter(y_train)
     total = sum(counts.values())
     smoothed_weights_map = {
@@ -158,88 +136,53 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
     min_w = min(smoothed_weights_map.values())
     weights_map = {k: v / min_w for k, v in smoothed_weights_map.items()}
     sample_weights = np.array([weights_map[label] for label in y_train])
-
-    # Apply SMOTE once before training loop to balance minority classes.
-    # SMOTE (Synthetic Minority Over-sampling Technique) generates synthetic
-    # samples for under-represented classes (moderate: 39%, high: 14%) by
-    # interpolating between existing samples in feature space.
-    # Applied only to training data — test set remains untouched to preserve
-    # realistic evaluation conditions.
-    if SMOTE_AVAILABLE:
-        X_train_smote = X_train.astype({col: "float64" for col in X_train.columns})
-        smote = SMOTE(random_state=RANDOM_STATE, k_neighbors=5)
-        X_train_smote, y_train_smote = smote.fit_resample(X_train_smote, y_train)
-        X_train_smote = pd.DataFrame(X_train_smote, columns=X_train.columns)
-        unique, counts = np.unique(y_train_smote, return_counts=True)
-        print(f"[SMOTE] Resampled class distribution: {dict(zip(unique.tolist(), counts.tolist()))}")
-    else:
-        print("[SMOTE] imbalanced-learn not installed — skipping. Run: pip install imbalanced-learn")
-        X_train_smote, y_train_smote = X_train, y_train
 
     for name, cfg in models.items():
-        X = X_train_scaled if cfg["needs_scaling"] else X_train_smote
-        y_loop = y_train_smote
+        X = X_train_scaled if cfg["needs_scaling"] else X_train
         use_weights = cfg.get("use_sample_weight", False)
-        # After SMOTE the classes are balanced — sample weights only needed for XGBoost
-        if use_weights and SMOTE_AVAILABLE:
-            counts_s = Counter(y_loop)
-            total_s = sum(counts_s.values())
-            sw_map = {cls: (total_s / (3.0 * np.sqrt(cnt))) for cls, cnt in counts_s.items()}
-            min_w = min(sw_map.values())
-            sw_map = {k: v / min_w for k, v in sw_map.items()}
-            fit_kwargs = {"sample_weight": np.array([sw_map[l] for l in y_loop])}
-        elif use_weights:
-            fit_kwargs = {"sample_weight": sample_weights}
-        else:
-            fit_kwargs = {}
+        fit_kwargs = {"sample_weight": sample_weights} if use_weights else {}
+        
         print(f"\n{'='*50}\n  {name.upper().replace('_', ' ')}\n{'='*50}")
-
-        # CV baseline uses original (non-SMOTE) data to avoid leakage
         print(f"\n  --- BEFORE TUNING ---")
+        
         before_cv_scores = []
-        for train_idx, val_idx in cv.split(X_train, y_train):
-            X_tr_cv = X_train.iloc[train_idx].copy()
-            X_val_cv = X_train.iloc[val_idx].copy()
-            y_tr_cv, y_val_cv = y_train[train_idx], y_train[val_idx]
+        for train_idx, val_idx in cv.split(X, y_train):
+            X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_tr, y_val = y_train[train_idx], y_train[val_idx]
+            
             fold_model = clone(cfg["model"])
-            if SMOTE_AVAILABLE:
-                X_tr_f = X_tr_cv.astype({c: "float64" for c in X_tr_cv.columns})
-                smote_f = SMOTE(random_state=RANDOM_STATE, k_neighbors=5)
-                X_tr_f, y_tr_f = smote_f.fit_resample(X_tr_f, y_tr_cv)
-                X_tr_f = pd.DataFrame(X_tr_f, columns=X_tr_cv.columns)
-            else:
-                X_tr_f, y_tr_f = X_tr_cv, y_tr_cv
             if use_weights:
-                cnt = Counter(y_tr_f); tot = sum(cnt.values())
-                sw = {k: (tot/(3.0*np.sqrt(v)))/min((tot/(3.0*np.sqrt(v2))) for v2 in cnt.values())
-                      for k,v in cnt.items()}
-                fold_model.fit(X_tr_f, y_tr_f, sample_weight=np.array([sw[l] for l in y_tr_f]))
+                fold_model.fit(X_tr, y_tr, sample_weight=sample_weights[train_idx])
             else:
-                fold_model.fit(X_tr_f, y_tr_f)
-            fold_pred = fold_model.predict(X_val_cv)
-            before_cv_scores.append(f1_score(y_val_cv, fold_pred, average="macro"))
+                fold_model.fit(X_tr, y_tr)
+                
+            fold_pred = fold_model.predict(X_val)
+            before_cv_scores.append(f1_score(y_val, fold_pred, average="macro"))
 
         before_cv_mean = np.mean(before_cv_scores)
         before_cv_std  = np.std(before_cv_scores)
 
-        cfg["model"].fit(X, y_loop, **fit_kwargs)
+        cfg["model"].fit(X, y_train, **fit_kwargs)
         y_pred = cfg["model"].predict(X)
         print(f"[before] CV {CV_SCORING}    : {before_cv_mean:.4f} (+/- {before_cv_std:.4f})")
-        print(f"[before] Train accuracy  : {accuracy_score(y_loop, y_pred):.4f}")
-        print(f"[before] Train macro F1  : {f1_score(y_loop, y_pred, average='macro'):.4f}")
-        print(f"[before] Train precision : {precision_score(y_loop, y_pred, average='macro', zero_division=0):.4f}")
-        print(f"[before] Train recall    : {recall_score(y_loop, y_pred, average='macro', zero_division=0):.4f}")
+        print(f"[before] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
+        print(f"[before] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
 
         if tune:
-            fitted, best_cv_score = tune_model(cfg["model"], cfg["param_grid"],
-                                               X, y_loop, name, fit_kwargs)
+            fitted, best_cv_score = tune_model(
+                model=cfg["model"], 
+                param_grid=cfg["param_grid"], 
+                X_train=X, 
+                y_train=y_train, 
+                name=name, 
+                use_sample_weight=use_weights,
+                sample_weights=sample_weights if use_weights else None
+            )
             print(f"\n  --- AFTER TUNING ---")
             y_pred = fitted.predict(X)
             print(f"[tune] CV {CV_SCORING}    : {best_cv_score:.4f}")
-            print(f"[tune] Train accuracy  : {accuracy_score(y_loop, y_pred):.4f}")
-            print(f"[tune] Train macro F1  : {f1_score(y_loop, y_pred, average='macro'):.4f}")
-            print(f"[tune] Train precision : {precision_score(y_loop, y_pred, average='macro', zero_division=0):.4f}")
-            print(f"[tune] Train recall    : {recall_score(y_loop, y_pred, average='macro', zero_division=0):.4f}")
+            print(f"[tune] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
+            print(f"[tune] Train macro F1  : {f1_score(y_train, y_pred, average='macro'):.4f}")
             print(f"\n  --- IMPROVEMENT ---")
             print(f"[tune] CV {CV_SCORING} delta : {best_cv_score - before_cv_mean:+.4f}")
             after_cv_mean = best_cv_score
@@ -256,7 +199,6 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
             "cv_mean":       float(after_cv_mean),
         }
 
-    # Ranking
     print(f"\n{'='*50}\n  MODEL RANKING\n{'='*50}")
     for rank, (name, cfg) in enumerate(
         sorted(trained.items(), key=lambda x: x[1]["cv_mean"], reverse=True), 1
@@ -264,7 +206,6 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
         print(f"  {rank}. {name:<25} CV F1 = {cfg['cv_mean']:.4f}")
 
     return trained
-
 
 # ── Save ──────────────────────────────────────────────────────────────────────
 def save_artefacts(trained: dict, save_dir: str, scaler,
