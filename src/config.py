@@ -62,8 +62,8 @@ LR_PARAMS = {
 
 RF_PARAM_GRID = {
     "n_estimators":     [100, 200],
-    "max_depth":        [6, 8, 10, None],
-    "min_samples_leaf": [2, 4, 8],
+    "max_depth":        [4, 6, 8],    
+    "min_samples_leaf": [4, 8, 16],      
     "max_features":     ["sqrt"],
 }
 
