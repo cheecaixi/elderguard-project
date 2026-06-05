@@ -89,8 +89,10 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     model, features, rev_map = load_model(model_dir, model_name)
 
     # ── BEFORE: training set ──────────────────────────────────────────────────
-    # All current models (decision_tree, random_forest, xgboost) use unscaled data
-    X_train, y_train = load_train_data(model_dir, use_scaled=False)
+    # logistic_regression needs scaled data; tree models use unscaled
+    needs_scaled = (model_name == "logistic_regression")
+
+    X_train, y_train = load_train_data(model_dir, use_scaled=needs_scaled)
     X_train          = X_train[features]
     y_train_pred     = model.predict(X_train)
     train_res = print_metrics(y_train, y_train_pred, label="TRAIN SET (after tuning)")
@@ -104,7 +106,7 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     plt.savefig(os.path.join(model_dir, f"cm_{model_name}_train.png"), dpi=120)
 
     # ── AFTER: test set ───────────────────────────────────────────────────────
-    X_test, y_test = load_test_data(model_dir, use_scaled=False)
+    X_test, y_test = load_test_data(model_dir, use_scaled=needs_scaled)
     X_test         = X_test[features]
     y_test_pred    = model.predict(X_test)
     test_res = print_metrics(y_test, y_test_pred, label="TEST SET  (after tuning)")

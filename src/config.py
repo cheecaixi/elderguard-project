@@ -48,12 +48,11 @@ XGB_PARAMS = {
     "n_jobs":        -1,
 }
 
-# Decision Tree 
-DT_PARAMS = {
-    "max_depth":         6,              
-    "min_samples_leaf":  15,
-    "class_weight":      "balanced",     
-    "random_state":      RANDOM_STATE,
+# Logistic Regression
+LR_PARAMS = {
+    "max_iter":     1000,
+    "class_weight": "balanced",
+    "random_state": RANDOM_STATE,
 }
 
 # ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
@@ -63,24 +62,22 @@ DT_PARAMS = {
 
 RF_PARAM_GRID = {
     "n_estimators":     [100, 200],
-    "max_depth":        [None, 10, 20],  # None = fully grown with leaf constraint
-    "min_samples_leaf": [2, 4, 8],      
+    "max_depth":        [6, 8, 10, None],
+    "min_samples_leaf": [2, 4, 8],
     "max_features":     ["sqrt"],
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators":     [100, 200],
-    "max_depth":        [3, 4],         
-    "learning_rate":    [0.05, 0.1], 
+    "n_estimators":     [100, 200, 300],
+    "max_depth":        [3, 4, 5],
+    "learning_rate":    [0.05, 0.1, 0.2],
     "subsample":        [0.8],
     "colsample_bytree": [0.8],
 }
 
-DT_PARAM_GRID = {
-    "max_depth":        [10, 14, 18],
-    "min_samples_leaf": [15, 30, 50],
-    "criterion":        ["gini", "entropy"],
-    "class_weight":     ["balanced"]
+LR_PARAM_GRID = {
+    "C":      [0.01, 0.1, 1.0, 10.0],
+    "solver": ["lbfgs", "saga"],
 }
 
 # ── Cross Validation ───────────────────────────────────────────

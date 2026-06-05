@@ -26,7 +26,7 @@ try:
 except ImportError:
     SMOTE_AVAILABLE = False
 
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
@@ -38,7 +38,7 @@ from src.config import (
     TUNE_MODELS,
     RF_PARAMS,  RF_PARAM_GRID,
     XGB_PARAMS, XGB_PARAM_GRID,
-    DT_PARAMS,  DT_PARAM_GRID,
+    LR_PARAMS,  LR_PARAM_GRID,
     CV_FOLDS, CV_SCORING,
 )
 from src.cleaning import clean_data
@@ -49,8 +49,7 @@ def get_models() -> dict:
     """
     Define the three models used in the pipeline.
 
-    - DecisionTreeClassifier  : interpretable tree baseline; handles non-linear
-                                boundaries; no scaling needed.
+    - LogisticRegression      : linear model for binary classification; requires scaling.
     - RandomForestClassifier  : ensemble of trees, robust to outliers and
                                 non-linear interactions; no scaling needed.
     - XGBClassifier           : gradient boosting with sample_weight for class
@@ -60,12 +59,12 @@ def get_models() -> dict:
     ~58/28/14% class imbalance across low/moderate/high activity.
     """
     return {
-        "decision_tree": {
-            "model": DecisionTreeClassifier(**DT_PARAMS),
-            "param_grid": DT_PARAM_GRID,
-            "needs_scaling": False,
-            "use_sample_weight": False,
-        },
+        "logistic_regression": {
+        "model":            LogisticRegression(**LR_PARAMS),
+        "param_grid":       LR_PARAM_GRID,
+        "needs_scaling":    True,   # uses X_train_scaled
+        "use_sample_weight": False,
+    },
         "random_forest": {
             "model": RandomForestClassifier(**RF_PARAMS),
             "param_grid": RF_PARAM_GRID,
