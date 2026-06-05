@@ -1,4 +1,4 @@
 {
   "best_model": "xgboost",
-  "cv_score": 0.7888403860759304
+  "cv_score": 0.7935332657862443
 }
