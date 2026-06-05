@@ -1,6 +1,8 @@
 [
   "Temperature",
   "Humidity",
+  "CO2_InfraredSensor",
+  "CO2_ElectroChemicalSensor",
   "MetalOxideSensor_Unit1",
   "MetalOxideSensor_Unit2",
   "MetalOxideSensor_Unit3",
@@ -10,9 +12,6 @@
   "CO2_Mean",
   "MOS_Mean",
   "MOS_Range",
-  "MOS_Ratio",
-  "CO2_Temp_Interaction",
-  "Temp_Change",
   "Ambient_Light_Ordinal",
   "Time of Day_evening",
   "Time of Day_morning",

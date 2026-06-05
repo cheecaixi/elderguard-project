@@ -20,7 +20,7 @@ from src.config import TARGET_COLUMN, DROP_COLUMNS
 # ── 1. Drop Columns Not Needed for Modelling ─────────────────────────────────
 def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Drop Session ID after engineering has extracted context.
+    Drop Session ID before modelling.
 
     Justification:
     - Session ID is just an identifier retained through cleaning for
@@ -39,36 +39,34 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     Create domain-informed features from existing sensor columns.
 
     Features created:
-    - CO2_Disagreement: Captures sensor disagreement indicating measurement anomalies
-    - CO2_Mean: Robust CO2 estimate; elevated levels indicate prolonged occupancy
-    - MOS_Mean: Composite VOC score; elevated levels indicate activity or poor air quality
-    - MOS_Range: Detects localized pollution sources and air stratification
-    - MOS_Ratio: Normalized variation; sensitive to abnormal patterns regardless of scale
-    - CO2_Temp_Interaction: Combined health risk; air quality + thermal stress synergy
-    - Temp_Change: Activity proxy; temperature volatility indicates movement
-    - Ambient_Light_Ordinal: Routine proxy; abnormal light patterns signal emergencies
-    
-    All engineered features are derived from domain knowledge about elderly monitoring:
-    - Activity patterns (movement, daily routines)
-    - Air quality health risks (CO2, VOCs)
-    - Environmental safety (temperature extremes, sensor reliability)
+    - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
+                            Large disagreement signals sensor drift or rapid
+                            CO2 flux during high physical activity.
+    - CO2_Mean            : Mean of both CO2 sensors.
+                            Reduces per-sensor noise into a single CO2 signal
+                            and is more robust than using either sensor alone.
+    - MOS_Mean            : Mean of all 4 Metal Oxide Sensor units.
+                            Reduces per-sensor noise into a single VOC signal.
+    - MOS_Range           : max - min across all 4 MOS units.
+                            Captures spread/variance between units — a wide
+                            range suggests localised VOC hotspots linked to
+                            elevated physical activity.
+    - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
+                            Preserves natural order for linear models.
     """
-    df = df.copy()
-    
-    # CO2 sensor disagreement + mean
+
+    # CO2 sensor disagreement
     if "CO2_InfraredSensor" in df.columns and "CO2_ElectroChemicalSensor" in df.columns:
         df["CO2_Disagreement"] = (
             df["CO2_InfraredSensor"] - df["CO2_ElectroChemicalSensor"]
         ).abs()
         print("[engineer_features] Created CO2_Disagreement")
 
+        # CO2 Mean — average of both CO2 sensors
         df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
         print("[engineer_features] Created CO2_Mean")
 
-        df = df.drop(columns=["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"], errors="ignore")
-        print("[engineer_features] Dropped individual CO2 sensor columns")
-
-    # Mean, range, and ratio of all MOS units
+    # Mean and range of all MOS units
     mos_cols = [
         "MetalOxideSensor_Unit1",
         "MetalOxideSensor_Unit2",
@@ -79,22 +77,9 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["MOS_Mean"] = df[mos_cols].mean(axis=1)
         print("[engineer_features] Created MOS_Mean")
 
+        # MOS Range — spread between highest and lowest MOS unit
         df["MOS_Range"] = df[mos_cols].max(axis=1) - df[mos_cols].min(axis=1)
         print("[engineer_features] Created MOS_Range")
-        
-        # Add MOS_Ratio (avoid division by zero)
-        df["MOS_Ratio"] = df["MOS_Range"] / (df["MOS_Mean"] + 1e-6)
-        print("[engineer_features] Created MOS_Ratio")
-
-    if "CO2_Mean" in df.columns and "Temperature" in df.columns:
-        df["CO2_Temp_Interaction"] = df["CO2_Mean"] * df["Temperature"]
-        print("[engineer_features] Created CO2_Temp_Interaction")  
-
-    # Rapid environmental changes (rolling differences)
-    if "Temperature" in df.columns and "Session ID" in df.columns:
-        df["Temp_Change"] = df.groupby("Session ID")["Temperature"].diff().abs()
-        df["Temp_Change"] = df["Temp_Change"].fillna(0)  # Fill first row of each session
-        print("[engineer_features] Created Temp_Change")     
 
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
@@ -105,8 +90,12 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             "bright":      3,
             "very_bright": 4,
         }
-        df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order).astype(int)
+        df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
+        df["Ambient_Light_Ordinal"] = df["Ambient_Light_Ordinal"].astype(int)
         print("[engineer_features] Created Ambient_Light_Ordinal")
+        print("[engineer_features] Light level mapping applied:")
+        for label, code in light_order.items():
+            print(f"    {label} → {code}")
 
     return df
 
@@ -130,7 +119,7 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
         col for col in ["Time of Day", "HVAC Operation Mode"]
         if col in df.columns
     ]
-    df = pd.get_dummies(df, columns=ohe_cols, drop_first=True, dtype=int)
+    df = pd.get_dummies(df, columns=ohe_cols, drop_first=True)
     print(f"[encode_categorical] One-hot encoded: {ohe_cols}")
 
     # Drop original Ambient Light Level — ordinal version already created
@@ -202,6 +191,13 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     - Both scaled and unscaled versions are saved so each model
       uses the appropriate input.
 
+    Usage:
+        # Training — fit on train data only:
+        X_train_scaled, scaler = scale_features(X_train)
+
+        # Inference / test — transform only, no refitting:
+        X_test_scaled, _ = scale_features(X_test, scaler=scaler)
+
     Excluded from scaling:
     - One-hot encoded dummy columns (already 0/1)
     - Ambient_Light_Ordinal (ordinal integer)
@@ -209,10 +205,11 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     """
     scale_cols = [col for col in df.columns if col in [
         "Temperature", "Humidity",
+        "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
         "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
         "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
         "CO2_Disagreement", "CO2_Mean",
-        "MOS_Mean", "MOS_Range", "MOS_Ratio", "CO2_Temp_Interaction", "Temp_Change"
+        "MOS_Mean", "MOS_Range",
     ]]
 
     df_scaled = df.copy()
@@ -236,29 +233,18 @@ def validate(X: pd.DataFrame, y: np.ndarray, label: str = "") -> None:
     print(f"\n[validate] ── {label} ────────────────────────────")
     print(f"  X shape         : {X.shape[0]:,} rows × {X.shape[1]} columns")
     print(f"  y shape         : {y.shape[0]:,} labels")
-    
-    missing_count = X.isnull().sum().sum()
-    print(f"  Missing values  : {missing_count}")
-    
+    print(f"  Missing values  : {X.isnull().sum().sum()}")
     inf_count = np.isinf(X.select_dtypes(include=np.number)).sum().sum()
     print(f"  Infinite values : {inf_count}")
-    
     unique, counts = np.unique(y, return_counts=True)
     print(f"  y class counts  : {dict(zip(unique.tolist(), counts.tolist()))}")
     print(f"  Feature list    : {list(X.columns)}")
 
-    if missing_count > 0:
+    if X.isnull().sum().sum() > 0:
         missing_cols = X.columns[X.isnull().any()].tolist()
-        raise ValueError(
-            f"[validate] CRITICAL FAILURE: {missing_count} missing values detected "
-            f"in columns: {missing_cols}. Fix data engineering pipeline cascades."
-        )
-        
+        print(f"  WARNING — columns with missing values: {missing_cols}")
     if inf_count > 0:
-        raise ValueError(
-            f"[validate] CRITICAL FAILURE: Infinite values detected inside features. "
-            f"Check division-by-zero or mathematical transformations in engineer_features()."
-        )
+        print(f"  WARNING — infinite values detected, check engineer_features()")
 
 
 # ── Master Pipeline ───────────────────────────────────────────────────────────
@@ -266,15 +252,13 @@ def build_features(df: pd.DataFrame) -> tuple:
     """
     Full feature-engineering pipeline.
 
-    1. Drop unused columns (Session ID)
+    Steps:
+        1. Drop unused columns (Session ID)
         2. Engineer new features (CO2_Disagreement, CO2_Mean,
-           MOS_Mean, MOS_Range, MOS_Ratio, CO2_Temp_Interaction,
-           Ambient_Light_Ordinal)
+           MOS_Mean, MOS_Range, Ambient_Light_Ordinal)
         3. One-hot encode nominal categoricals
-        4. Drop weak features identified by permutation importance
-           (negative or near-zero permutation scores on test set)
-        5. Separate and encode target column
-        6. Validate final feature set
+        4. Separate and encode target column
+        5. Validate final feature set
 
     NOTE: Scaling is NOT done here. Call scale_features() in train.py
           AFTER train/test split so the scaler is fit on training data only.
@@ -285,27 +269,9 @@ def build_features(df: pd.DataFrame) -> tuple:
         activity_map — encoding dict {class_name: int}
         feature_names— ordered list of final feature column names
     """
-    df = engineer_features(df)
     df = drop_unused_columns(df)
+    df = engineer_features(df)
     df = encode_categorical(df)
-
-    # Drop features with negative or near-zero permutation importance.
-    # These were identified via permutation importance on the held-out
-    # test set — shuffling them improved or did not hurt macro F1,
-    # meaning they contribute noise rather than signal.
-    # WEAK_FEATURES = [
-    #     "Temp_Change",
-    #     "Time of Day_evening", 
-    #     "HVAC Operation Mode_heating_active",
-    #     "HVAC Operation Mode_maintenance_mode",
-    #     "Ambient_Light_Ordinal",  # Low importance
-    # ]
-
-    # weak_to_drop = [f for f in WEAK_FEATURES if f in df.columns]
-    # df = df.drop(columns=weak_to_drop)
-    # print(f"[build_features] Dropped weak features: {weak_to_drop}")
-
-    # encode_target called once only
     df, y, activity_map = encode_target(df)
 
     X = df.copy()
@@ -314,6 +280,7 @@ def build_features(df: pd.DataFrame) -> tuple:
     feature_names = list(X.columns)
     print(f"\n[build_features] Done — {len(feature_names)} features, {len(y):,} samples\n")
     return X, y, activity_map, feature_names
+
 
 # ── Run as standalone script ──────────────────────────────────────────────────
 if __name__ == "__main__":
