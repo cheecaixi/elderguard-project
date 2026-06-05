@@ -30,7 +30,7 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     before = len(df)
     df = df.drop_duplicates()
     print(f"[remove_duplicates] Removed {before - len(df)} duplicate rows")
-    return df   
+    return df
 
 # ── 3. Standardise Categorical Labels ─────────────────────────────────────────────
 def clean_activity_labels(df: pd.DataFrame) -> pd.DataFrame:
@@ -60,7 +60,7 @@ def clean_hvac_labels(df: pd.DataFrame) -> pd.DataFrame:
 def remove_contaminated_sessions(df: pd.DataFrame) -> pd.DataFrame:
     """Remove sessions flagged as contaminated in EDA.
     Assumption: Session 2586 is removed entirely despite CO2 and humidity
-    readings appearing normal. 
+    readings appearing normal.
     Justification: mean temperature of 89.9C is
     physically impossible indoors, indicating faulty sensor hardware. Since
     all readings come from the same hardware, other sensor values from this
@@ -79,7 +79,7 @@ def fix_invalid_values(df: pd.DataFrame) -> pd.DataFrame:
     Justification:
     - Capping (e.g. 292°C → 40°C) introduces artificial values that could mislead model training
     - Removing rows loses 24% of data and introduces selection bias
-    - Converting to NaN allows session-level median imputation to fill with realistic 
+    - Converting to NaN allows session-level median imputation to fill with realistic
     values from the same environmental context
     - This is the most statistically honest approach
     """
@@ -128,7 +128,7 @@ def impute_numeric_session_median(df: pd.DataFrame) -> pd.DataFrame:
     impossible readings as NaN instead of capping or removing.
     """
     session_median_cols = [
-        "Temperature",         
+        "Temperature",
         "Humidity",
         "MetalOxideSensor_Unit2",
         "CO2_InfraredSensor",

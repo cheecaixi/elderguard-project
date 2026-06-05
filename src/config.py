@@ -64,13 +64,13 @@ DT_PARAMS = {
 RF_PARAM_GRID = {
     "n_estimators":     [150, 300, 400],
     "max_depth":        [14, 16, 18],
-    "min_samples_leaf": [5, 10, 15],     
-    "max_features":     ["sqrt"]      
+    "min_samples_leaf": [5, 10, 15],
+    "max_features":     ["sqrt"]
 }
 
 XGB_PARAM_GRID = {
     "n_estimators":     [200, 300],
-    "max_depth":        [6, 7, 8],        
+    "max_depth":        [6, 7, 8],
     "learning_rate":    [0.02, 0.04],
     "subsample":        [0.7, 0.8],
     "colsample_bytree": [0.8]
@@ -80,9 +80,9 @@ DT_PARAM_GRID = {
     "max_depth":        [10, 14, 18],
     "min_samples_leaf": [15, 30, 50],
     "criterion":        ["gini", "entropy"],
-    "class_weight": ["balanced"]
+    "class_weight":     ["balanced"]
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 3      # number of folds for StratifiedKFold
+CV_FOLDS   = 3           # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally

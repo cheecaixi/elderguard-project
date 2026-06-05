@@ -25,7 +25,7 @@ def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
     Justification:
     - Session ID is just an identifier retained through cleaning for
       session-based imputation. The number itself contains no useful information.
-      Keeping it could allow the model to memorize sessions rather than learn patterns.
+      Keeping it could allow the model to memorise sessions rather than learn patterns.
     """
     cols_to_drop = [col for col in ["Session ID"] if col in df.columns]
     df = df.drop(columns=cols_to_drop)
@@ -42,19 +42,17 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
                             Large disagreement signals sensor drift or rapid
                             CO2 flux during high physical activity.
+    - CO2_Mean            : Mean of both CO2 sensors.
+                            Reduces per-sensor noise into a single CO2 signal
+                            and is more robust than using either sensor alone.
     - MOS_Mean            : Mean of all 4 Metal Oxide Sensor units.
                             Reduces per-sensor noise into a single VOC signal.
-                            EDA showed individual units (especially Unit2) are
-                            stronger predictors; MOS_Mean is kept alongside them
-                            and both will be tested in the pipeline.
+    - MOS_Range           : max - min across all 4 MOS units.
+                            Captures spread/variance between units — a wide
+                            range suggests localised VOC hotspots linked to
+                            elevated physical activity.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
                             Preserves natural order for linear models.
-
-    Removed:
-    - Is_Night : redundant — Time of Day one-hot encoding already produces
-                 a night dummy column in encode_categorical().
-    - High_CO  : redundant — CO_GasSensor (0-4 integer) is already in the
-                 feature set; the model can learn the threshold itself.
     """
 
     # CO2 sensor disagreement
@@ -64,7 +62,11 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         ).abs()
         print("[engineer_features] Created CO2_Disagreement")
 
-    # Mean of all MOS units
+        # CO2 Mean — average of both CO2 sensors
+        df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
+        print("[engineer_features] Created CO2_Mean")
+
+    # Mean and range of all MOS units
     mos_cols = [
         "MetalOxideSensor_Unit1",
         "MetalOxideSensor_Unit2",
@@ -75,17 +77,21 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["MOS_Mean"] = df[mos_cols].mean(axis=1)
         print("[engineer_features] Created MOS_Mean")
 
+        # MOS Range — spread between highest and lowest MOS unit
+        df["MOS_Range"] = df[mos_cols].max(axis=1) - df[mos_cols].min(axis=1)
+        print("[engineer_features] Created MOS_Range")
+
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
         light_order = {
-            "very_dim": 0,
-            "dim": 1,
-            "moderate": 2,
-            "bright": 3,
+            "very_dim":    0,
+            "dim":         1,
+            "moderate":    2,
+            "bright":      3,
             "very_bright": 4,
         }
         df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
-        df["Ambient_Light_Ordinal"] = df["Ambient_Light_Ordinal"].astype(int) # Ensure integer type for ordinal feature
+        df["Ambient_Light_Ordinal"] = df["Ambient_Light_Ordinal"].astype(int)
         print("[engineer_features] Created Ambient_Light_Ordinal")
         print("[engineer_features] Light level mapping applied:")
         for label, code in light_order.items():
@@ -175,14 +181,14 @@ def activity_map_inv(activity_map: dict, code: int) -> str:
 
 
 # ── 5. Scale Numerical Features ──────────────────────────────────────────────
-def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.DataFrame, StandardScaler]:
+def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     """
     Standardise continuous sensor readings using StandardScaler.
 
     Justification:
     - Required for Logistic Regression — sensitive to feature scale.
     - Not required for Random Forest / Gradient Boosting (rank-based splits).
-    - Both scaled and unscaled versions are returned so each model
+    - Both scaled and unscaled versions are saved so each model
       uses the appropriate input.
 
     Usage:
@@ -200,9 +206,10 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple[pd.
     scale_cols = [col for col in df.columns if col in [
         "Temperature", "Humidity",
         "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
-         "MetalOxideSensor_Unit2", "MetalOxideSensor_Unit4",
-        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit3",
-        "CO2_Disagreement", "MOS_Mean",
+        "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
+        "CO2_Disagreement", "CO2_Mean",
+        "MOS_Mean", "MOS_Range",
     ]]
 
     df_scaled = df.copy()
@@ -231,6 +238,7 @@ def validate(X: pd.DataFrame, y: np.ndarray, label: str = "") -> None:
     print(f"  Infinite values : {inf_count}")
     unique, counts = np.unique(y, return_counts=True)
     print(f"  y class counts  : {dict(zip(unique.tolist(), counts.tolist()))}")
+    print(f"  Feature list    : {list(X.columns)}")
 
     if X.isnull().sum().sum() > 0:
         missing_cols = X.columns[X.isnull().any()].tolist()
@@ -246,7 +254,8 @@ def build_features(df: pd.DataFrame) -> tuple:
 
     Steps:
         1. Drop unused columns (Session ID)
-        2. Engineer new features (CO2_Disagreement, MOS_Mean, Ambient_Light_Ordinal)
+        2. Engineer new features (CO2_Disagreement, CO2_Mean,
+           MOS_Mean, MOS_Range, Ambient_Light_Ordinal)
         3. One-hot encode nominal categoricals
         4. Separate and encode target column
         5. Validate final feature set
