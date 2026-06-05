@@ -39,20 +39,18 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     Create domain-informed features from existing sensor columns.
 
     Features created:
-    - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
-                            Large disagreement signals sensor drift or rapid
-                            CO2 flux during high physical activity.
-    - CO2_Mean            : Mean of both CO2 sensors.
-                            Reduces per-sensor noise into a single CO2 signal
-                            and is more robust than using either sensor alone.
-    - MOS_Mean            : Mean of all 4 Metal Oxide Sensor units.
-                            Reduces per-sensor noise into a single VOC signal.
-    - MOS_Range           : max - min across all 4 MOS units.
-                            Captures spread/variance between units — a wide
-                            range suggests localised VOC hotspots linked to
-                            elevated physical activity.
+    - CO2_Disagreement     : |Infrared CO2 - ElectroChemical CO2|
+                             Large disagreement signals sensor drift or rapid
+                             CO2 flux during high physical activity.
+    - CO2_Mean             : Mean of both CO2 sensors.
+                             Reduces per-sensor noise into a single CO2 signal
+                             and is more robust than using either sensor alone.
+    - MOS_Core_Active_Mean : Mean of the highly predictive Metal Oxide Sensor Unit 2 and Unit 4.
+                             Eliminates the baseline dilution noise of Units 1 and 3.
+    - MOS_Core_Active_Range: max - min between MOS Unit 2 and Unit 4.
+                             Captures sharp localized volatility drops or spikes.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
-                            Preserves natural order for linear models.
+                             Preserves natural order for linear models.
     """
 
     # CO2 sensor disagreement
@@ -66,20 +64,17 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
         print("[engineer_features] Created CO2_Mean")
 
-    # Mean and range of all MOS units
-    mos_cols = [
-        "MetalOxideSensor_Unit1",
-        "MetalOxideSensor_Unit2",
-        "MetalOxideSensor_Unit3",
-        "MetalOxideSensor_Unit4",
-    ]
-    if all(c in df.columns for c in mos_cols):
-        df["MOS_Mean"] = df[mos_cols].mean(axis=1)
-        print("[engineer_features] Created MOS_Mean")
+    # TARGETED AGGREGATIONS: Focus strictly on your top-performing Unit 2 and Unit 4
+    core_mos_cols = ["MetalOxideSensor_Unit2", "MetalOxideSensor_Unit4"]
+    
+    if all(c in df.columns for c in core_mos_cols):
+        # Calculate mean using only the two core predictors
+        df["MOS_Core_Active_Mean"] = df[core_mos_cols].mean(axis=1)
+        print("[engineer_features] Created MOS_Core_Active_Mean (Units 2 & 4)")
 
-        # MOS Range — spread between highest and lowest MOS unit
-        df["MOS_Range"] = df[mos_cols].max(axis=1) - df[mos_cols].min(axis=1)
-        print("[engineer_features] Created MOS_Range")
+        # Range tracking focused strictly on the core active pairs
+        df["MOS_Core_Active_Range"] = df[core_mos_cols].max(axis=1) - df[core_mos_cols].min(axis=1)
+        print("[engineer_features] Created MOS_Core_Active_Range (Units 2 & 4)")
 
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
@@ -98,7 +93,6 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             print(f"    {label} → {code}")
 
     return df
-
 
 # ── 3. Encode Categorical Features ───────────────────────────────────────────
 def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
@@ -209,7 +203,7 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
         "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
         "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
         "CO2_Disagreement", "CO2_Mean",
-        "MOS_Mean", "MOS_Range",
+        "MOS_Core_Active_Mean", "MOS_Core_Active_Range",
     ]]
 
     df_scaled = df.copy()
@@ -255,7 +249,7 @@ def build_features(df: pd.DataFrame) -> tuple:
     Steps:
         1. Drop unused columns (Session ID)
         2. Engineer new features (CO2_Disagreement, CO2_Mean,
-           MOS_Mean, MOS_Range, Ambient_Light_Ordinal)
+           MOS_Core_Active_Mean, MOS_Core_Active_Range, Ambient_Light_Ordinal)
         3. One-hot encode nominal categoricals
         4. Separate and encode target column
         5. Validate final feature set
