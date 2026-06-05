@@ -209,12 +209,13 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     df_scaled = df.copy()
     if scaler is None:
         scaler = StandardScaler()
-        df_scaled[scale_cols] = scaler.fit_transform(df[scale_cols])
-        print(f"[scale_features] Fitted new scaler on {len(scale_cols)} columns")
+        scaled_array = scaler.fit_transform(df)
     else:
-        df_scaled[scale_cols] = scaler.transform(df[scale_cols])
-
-    return df_scaled, scaler
+        scaled_array = scaler.transform(df)
+        
+    # Convert back to a DataFrame preserving the 22 feature names
+    scaled_df = pd.DataFrame(scaled_array, columns=df.columns, index=df.index)
+    return scaled_df, scaler
 
 
 # ── 6. Validate ───────────────────────────────────────────────────────────────
@@ -268,11 +269,27 @@ def build_features(df: pd.DataFrame) -> tuple:
     df = encode_categorical(df)
     df, y, activity_map = encode_target(df)
 
+    # Feature selection based on feature importance analysis
+    weak_features = [
+        "Ambient_Light_Ordinal",
+        "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit4"
+    ]
+
+    df = df.drop(
+        columns=[c for c in weak_features if c in df.columns],
+        errors="ignore"
+    )
+
+    print(f"[feature_selection] Removed {len(weak_features)} weak features")
+
     X = df.copy()
+
     validate(X, y, label="Final feature set")
 
     feature_names = list(X.columns)
     print(f"\n[build_features] Done — {len(feature_names)} features, {len(y):,} samples\n")
+
     return X, y, activity_map, feature_names
 
 
