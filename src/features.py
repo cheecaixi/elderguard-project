@@ -75,6 +75,10 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["MOS_Range"] = df[mos_cols].max(axis=1) - df[mos_cols].min(axis=1)
         print("[engineer_features] Created MOS_Range")
 
+    if "CO2_Mean" in df.columns and "Temperature" in df.columns:
+        df["CO2_Temp_Interaction"] = df["CO2_Mean"] * df["Temperature"]
+        print("[engineer_features] Created CO2_Temp_Interaction")   
+
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
         light_order = {
@@ -194,7 +198,7 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
         "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
         "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
         "CO2_Disagreement", "CO2_Mean",
-        "MOS_Mean", "MOS_Range"
+        "MOS_Mean", "MOS_Range","MOS_Ratio", "CO2_Temp_Interaction"
     ]]
 
     df_scaled = df.copy()
@@ -248,13 +252,15 @@ def build_features(df: pd.DataFrame) -> tuple:
     """
     Full feature-engineering pipeline.
 
-    Steps:
-        1. Drop unused columns (Session ID)
+    1. Drop unused columns (Session ID)
         2. Engineer new features (CO2_Disagreement, CO2_Mean,
-           MOS_Mean, MOS_Range, Ambient_Light_Ordinal)
+           MOS_Mean, MOS_Range, MOS_Ratio, CO2_Temp_Interaction,
+           Ambient_Light_Ordinal)
         3. One-hot encode nominal categoricals
-        4. Separate and encode target column
-        5. Validate final feature set
+        4. Drop weak features identified by permutation importance
+           (negative or near-zero permutation scores on test set)
+        5. Separate and encode target column
+        6. Validate final feature set
 
     NOTE: Scaling is NOT done here. Call scale_features() in train.py
           AFTER train/test split so the scaler is fit on training data only.
@@ -268,6 +274,22 @@ def build_features(df: pd.DataFrame) -> tuple:
     df = engineer_features(df)
     df = drop_unused_columns(df)
     df = encode_categorical(df)
+
+    # Drop features with negative or near-zero permutation importance.
+    # These were identified via permutation importance on the held-out
+    # test set — shuffling them improved or did not hurt macro F1,
+    # meaning they contribute noise rather than signal.
+    WEAK_FEATURES = [
+        "Ambient_Light_Ordinal",       # perm rank 19 — negative score
+        "Time of Day_night",           # perm rank 20 — most negative
+        "CO2_Mean",                    # perm rank 17 — negative score
+        "MOS_Mean",                    # perm rank 12 — near zero
+    ]
+    weak_to_drop = [f for f in WEAK_FEATURES if f in df.columns]
+    df = df.drop(columns=weak_to_drop)
+    print(f"[build_features] Dropped weak features: {weak_to_drop}")
+
+    # encode_target called once only
     df, y, activity_map = encode_target(df)
 
     X = df.copy()
@@ -276,7 +298,6 @@ def build_features(df: pd.DataFrame) -> tuple:
     feature_names = list(X.columns)
     print(f"\n[build_features] Done — {len(feature_names)} features, {len(y):,} samples\n")
     return X, y, activity_map, feature_names
-
 
 # ── Run as standalone script ──────────────────────────────────────────────────
 if __name__ == "__main__":

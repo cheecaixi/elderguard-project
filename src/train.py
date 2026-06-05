@@ -76,7 +76,7 @@ def get_models() -> dict:
             "model": XGBClassifier(**XGB_PARAMS),
             "param_grid": XGB_PARAM_GRID,
             "needs_scaling": False,
-            "use_sample_weight": True,
+            "use_sample_weight": False,
         },
     }
 
