@@ -21,11 +21,6 @@ DROP_COLUMNS = ["Session ID"]
 # ── Train/Test Split ────────────────────────────────────────────────────
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
-<<<<<<< HEAD
-CV_FOLDS = 5  
-CV_SCORING = "f1_macro"                   
-=======
->>>>>>> fa3bc54fcf820e0995bcd1a08b33583d3ccbe08a
 
 # ── Tuning ────────────────────────────────────────────────────
 # Set TUNE_MODELS = True  to run GridSearchCV (slower, finds best params)
@@ -42,23 +37,20 @@ RF_PARAMS = {
     "n_jobs":           -1,
 }
 
-# XGBoost
-XGB_PARAMS = {
-    "n_estimators":  200,
-    "max_depth":     5,
+# Gradient Boosting
+GB_PARAMS = {
+    "max_iter":     200,
     "learning_rate": 0.1,
-    "tree_method":   "hist",
-    "eval_metric":   "mlogloss",
-    "random_state":  RANDOM_STATE,
-    "n_jobs":        -1,
+    "max_depth":    5,
+    "class_weight": "balanced",
+    "random_state": RANDOM_STATE,
 }
 
-# Decision Tree 
-DT_PARAMS = {
-    "max_depth":         6,              
-    "min_samples_leaf":  15,
-    "class_weight":      "balanced",     
-    "random_state":      RANDOM_STATE,
+# Logistic Regression
+LR_PARAMS = {
+    "max_iter":      1000,
+    "class_weight":  "balanced",
+    "random_state":  RANDOM_STATE,
 }
 
 # ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
@@ -67,27 +59,23 @@ DT_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [150, 300, 400],
-    "max_depth":        [14, 16, 18],
-    "min_samples_leaf": [5, 10, 15],
-    "max_features":     ["sqrt"]
+    "n_estimators":     [100, 200, 300],
+    "max_depth":        [None, 10, 20],
+    "min_samples_leaf": [1, 2, 4],     
+    "max_features":     ["sqrt", "log2"], 
 }
 
-XGB_PARAM_GRID = {
-    "n_estimators":     [200, 300],
-    "max_depth":        [6, 7, 8],
-    "learning_rate":    [0.02, 0.04],
-    "subsample":        [0.7, 0.8],
-    "colsample_bytree": [0.8]
+GB_PARAM_GRID = {
+    "max_iter":      [100, 200],    # drop 300
+    "learning_rate": [0.05, 0.1],   # drop 0.01
+    "max_depth":     [3, 5],        # keep as is
 }
 
-DT_PARAM_GRID = {
-    "max_depth":        [10, 14, 18],
-    "min_samples_leaf": [15, 30, 50],
-    "criterion":        ["gini", "entropy"],
-    "class_weight":     ["balanced"]
+LR_PARAM_GRID = {
+    "C":      [0.01, 0.1, 1.0, 10.0],   
+    "solver": ["lbfgs", "saga"],          
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 5           # number of folds for StratifiedKFold
+CV_FOLDS   = 5      # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
