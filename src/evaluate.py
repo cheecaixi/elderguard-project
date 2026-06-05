@@ -11,11 +11,13 @@ import sys
 import json
 import argparse
 import joblib
+import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend — no display needed
 import matplotlib.pyplot as plt
+matplotlib.use('WebAgg')
 import seaborn as sns
 from sklearn.metrics import (
     accuracy_score, f1_score, confusion_matrix, classification_report
@@ -83,13 +85,15 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     """Evaluate a single model — prints TRAIN results then TEST results."""
     print(f"\n{'='*50}\n  {model_name.upper()}\n{'='*50}")
 
+    # Load model
     model, features, rev_map = load_model(model_dir, model_name)
 
-    # All current models use unscaled data
+    # ── BEFORE: training set ──────────────────────────────────────────────────
+    # All current models (decision_tree, random_forest, xgboost) use unscaled data
     X_train, y_train = load_train_data(model_dir, use_scaled=False)
-    X_train = X_train[features]
-    train_res = print_metrics(y_train, model.predict(X_train),
-                              label="TRAIN SET (after tuning)")
+    X_train          = X_train[features]
+    y_train_pred     = model.predict(X_train)
+    train_res = print_metrics(y_train, y_train_pred, label="TRAIN SET (after tuning)")
 
     plt.figure(figsize=(7, 5))
     sns.heatmap(train_res["cm"], annot=True, fmt="d", cmap="Greens",
@@ -98,12 +102,12 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     plt.title(f'{model_name.replace("_", " ").title()} — Train')
     plt.tight_layout()
     plt.savefig(os.path.join(model_dir, f"cm_{model_name}_train.png"), dpi=120)
-    plt.close()
 
+    # ── AFTER: test set ───────────────────────────────────────────────────────
     X_test, y_test = load_test_data(model_dir, use_scaled=False)
-    X_test = X_test[features]
-    test_res = print_metrics(y_test, model.predict(X_test),
-                             label="TEST SET  (after tuning)")
+    X_test         = X_test[features]
+    y_test_pred    = model.predict(X_test)
+    test_res = print_metrics(y_test, y_test_pred, label="TEST SET  (after tuning)")
 
     plt.figure(figsize=(7, 5))
     sns.heatmap(test_res["cm"], annot=True, fmt="d", cmap="Blues",
@@ -112,7 +116,6 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     plt.title(f'{model_name.replace("_", " ").title()} — Test')
     plt.tight_layout()
     plt.savefig(os.path.join(model_dir, f"cm_{model_name}_test.png"), dpi=120)
-    plt.close()
 
     return {
         "name":           model_name,
@@ -148,9 +151,11 @@ def evaluate_all(model_dir: str) -> None:
     if len(results) > 1:
         raw_names   = list(results.keys())
         clean_names = [n.replace("_", " ").title() for n in raw_names]
+        
         train_f1s   = [results[n]["train_f1_macro"] for n in raw_names]
         test_f1s    = [results[n]["test_f1_macro"]  for n in raw_names]
-        x, width    = np.arange(len(raw_names)), 0.35
+        x           = np.arange(len(raw_names))
+        width       = 0.35
 
         fig, ax = plt.subplots(figsize=(9, 5))
         bars1 = ax.bar(x - width / 2, train_f1s, width, label="Train F1", color="#4CAF50")
@@ -159,7 +164,7 @@ def evaluate_all(model_dir: str) -> None:
         ax.set_ylabel("Macro F1 Score")
         ax.set_title("Model Comparison — Train vs Test Macro F1")
         ax.set_xticks(x)
-        ax.set_xticklabels(clean_names, rotation=15)
+        ax.set_xticklabels(clean_names, rotation=15)  # FIXED: Uses clean formatting on chart labels
         ax.legend()
         for bar, score in zip(bars1, train_f1s):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
@@ -169,8 +174,6 @@ def evaluate_all(model_dir: str) -> None:
                     f"{score:.3f}", ha="center", fontweight="bold", fontsize=9)
         plt.tight_layout()
         plt.savefig(os.path.join(model_dir, "comparison.png"), dpi=120)
-        plt.close()
-        print(f"[evaluate] Comparison chart saved → {model_dir}/comparison.png")
 
 
 # ── 7. Main ───────────────────────────────────────────────────────────────────
@@ -182,6 +185,7 @@ def run_evaluation(model_dir: str = MODEL_SAVE_DIR, model_name: str = None) -> N
         evaluate_all(model_dir)
     print(f"\n{'='*50}\n  EVALUATION PIPELINE — COMPLETE\n{'='*50}")
 
+    plt.show(block=False)
 
 if __name__ == "__main__":
     import warnings

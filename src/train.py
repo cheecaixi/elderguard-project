@@ -45,7 +45,6 @@ from src.config import (
 from src.cleaning import clean_data
 from src.features import build_features, scale_features
 
-
 # ── Models ────────────────────────────────────────────────────────
 def get_models() -> dict:
     """
@@ -136,6 +135,19 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
     models = get_models()
     trained = {}
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+    
+    counts = Counter(y_train)
+    total = sum(counts.values())
+    
+    # Compute smoothed weights using square root mapping
+    smoothed_weights_map = {
+        cls: (total / (3.0 * np.sqrt(count))) for cls, count in counts.items()
+    }
+    # Normalize so that the minimum weight remains 1.0
+    min_w = min(smoothed_weights_map.values())
+    weights_map = {k: v / min_w for k, v in smoothed_weights_map.items()}
+
+    sample_weights = np.array([weights_map[label] for label in y_train])
 
     # Build smoothed sample weights for XGBoost
     counts = Counter(y_train)
@@ -303,9 +315,9 @@ def run_training(db_path: str = DB_PATH,
     # 2. Split (saves unscaled parquet files for evaluate.py)
     X_train, X_test, y_train, y_test = split_data(X, y, save_dir)
 
-    # 3. Scale — fit on train only, transform both
+    # 3. Scale — Fit on train only, transform both (Kept for downstream file compatibility)
     X_train_scaled, scaler = scale_features(X_train)
-    X_test_scaled,  _      = scale_features(X_test, scaler=scaler)
+    X_test_scaled, _       = scale_features(X_test, scaler=scaler)
     X_train_scaled = X_train_scaled.fillna(0)
     X_test_scaled  = X_test_scaled.fillna(0)
 
@@ -313,7 +325,7 @@ def run_training(db_path: str = DB_PATH,
     X_train_scaled.to_parquet(os.path.join(save_dir, "X_train_scaled.parquet"), index=False)
     X_test_scaled.to_parquet(os.path.join(save_dir,  "X_test_scaled.parquet"),  index=False)
 
-    # 4. Train
+    # 4. Train (Now routes unscaled matrices to your Tree/Boosting architectures)
     trained = train_models(X_train, X_train_scaled, y_train, tune)
 
     # 5. Save

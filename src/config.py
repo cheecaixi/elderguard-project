@@ -48,11 +48,11 @@ XGB_PARAMS = {
     "n_jobs":        -1,
 }
 
-# Decision Tree
+# Decision Tree 
 DT_PARAMS = {
-    "max_depth":         6,
+    "max_depth":         6,              
     "min_samples_leaf":  15,
-    "class_weight":      "balanced",
+    "class_weight":      "balanced",     
     "random_state":      RANDOM_STATE,
 }
 
