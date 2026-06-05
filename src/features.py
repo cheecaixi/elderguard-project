@@ -273,9 +273,13 @@ def validate(X: pd.DataFrame, y: np.ndarray, label: str = "") -> None:
     print(f"\n[validate] ── {label} ────────────────────────────")
     print(f"  X shape         : {X.shape[0]:,} rows × {X.shape[1]} columns")
     print(f"  y shape         : {y.shape[0]:,} labels")
-    print(f"  Missing values  : {X.isnull().sum().sum()}")
+    
+    missing_count = X.isnull().sum().sum()
+    print(f"  Missing values  : {missing_count}")
+    
     inf_count = np.isinf(X.select_dtypes(include=np.number)).sum().sum()
     print(f"  Infinite values : {inf_count}")
+    
     unique, counts = np.unique(y, return_counts=True)
     print(f"  y class counts  : {dict(zip(unique.tolist(), counts.tolist()))}")
     print(f"  Feature list    : {list(X.columns)}")
