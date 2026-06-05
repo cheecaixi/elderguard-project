@@ -20,7 +20,7 @@ from src.config import TARGET_COLUMN, DROP_COLUMNS
 # ── 1. Drop Columns Not Needed for Modelling ─────────────────────────────────
 def drop_unused_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Drop Session ID before modelling.
+    Drop Session ID after engineering has extracted context.
 
     Justification:
     - Session ID is just an identifier retained through cleaning for
@@ -53,8 +53,15 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
                             elevated physical activity.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
                             Preserves natural order for linear models.
-    """
 
+    - CO2_rolling_avg_3    : 3-step moving average of CO2 to capture ambient accumulation.
+    - MOS_rolling_avg_3    : 3-step moving average of VOC signals.
+    - Temp_rolling_avg_3   : 3-step moving average of temperature.
+    - CO2_change_3         : Velocity/rate of change of CO2 over a 3-step delta window.
+    - Temp_change_3        : Velocity/rate of change of Temperature over a 3-step delta window.                        
+    """
+    df = df.copy()
+    
     # CO2 sensor disagreement
     if "CO2_InfraredSensor" in df.columns and "CO2_ElectroChemicalSensor" in df.columns:
         df["CO2_Disagreement"] = (
@@ -97,6 +104,35 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         for label, code in light_order.items():
             print(f"    {label} → {code}")
 
+    if "Session ID" in df.columns:
+        print("[engineer_features] Extracting session-aware rolling window context...")
+        
+        # Group by Session ID to track individual sequence paths safely
+        session_gp = df.groupby("Session ID")
+        
+        # Moving Averages (Smooth out momentary spikes, capture prolonged buildup)
+        if "CO2_Mean" in df.columns:
+            df["CO2_rolling_avg_3"] = session_gp["CO2_Mean"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+        elif "CO2_InfraredSensor" in df.columns:
+            df["CO2_rolling_avg_3"] = session_gp["CO2_InfraredSensor"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+            
+        if "MOS_Mean" in df.columns:
+            df["MOS_rolling_avg_3"] = session_gp["MOS_Mean"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+            
+        if "Temperature" in df.columns:
+            df["Temp_rolling_avg_3"] = session_gp["Temperature"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+        
+        # Deltas / Directional Velocity (Differentiate flat baselines from surging active baselines)
+        if "CO2_InfraredSensor" in df.columns:
+            df["CO2_change_3"] = df["CO2_InfraredSensor"] - session_gp["CO2_InfraredSensor"].shift(3).fillna(df["CO2_InfraredSensor"])
+            
+        if "Temperature" in df.columns:
+            df["Temp_change_3"] = df["Temperature"] - session_gp["Temperature"].shift(3).fillna(df["Temperature"])
+            
+        print("[engineer_features] Created temporal features: CO2_rolling_avg_3, MOS_rolling_avg_3, Temp_rolling_avg_3, CO2_change_3, Temp_change_3")
+    else:
+        print("[engineer_features] WARNING: 'Session ID' missing from input frame. Skipping historical features.")
+
     return df
 
 
@@ -119,7 +155,7 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
         col for col in ["Time of Day", "HVAC Operation Mode"]
         if col in df.columns
     ]
-    df = pd.get_dummies(df, columns=ohe_cols, drop_first=True)
+    df = pd.get_dummies(df, columns=ohe_cols, drop_first=True, dtype=int)
     print(f"[encode_categorical] One-hot encoded: {ohe_cols}")
 
     # Drop original Ambient Light Level — ordinal version already created
@@ -190,6 +226,8 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     - Not required for Random Forest / Gradient Boosting (rank-based splits).
     - Both scaled and unscaled versions are saved so each model
       uses the appropriate input.
+    Appended session-aware rolling averages and change velocity
+    features to the standardization array to prevent feature scale distortion.
 
     Usage:
         # Training — fit on train data only:
@@ -210,6 +248,8 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
         "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
         "CO2_Disagreement", "CO2_Mean",
         "MOS_Mean", "MOS_Range",
+        "CO2_rolling_avg_3", "MOS_rolling_avg_3", "Temp_rolling_avg_3",
+        "CO2_change_3", "Temp_change_3"
     ]]
 
     df_scaled = df.copy()
@@ -240,11 +280,18 @@ def validate(X: pd.DataFrame, y: np.ndarray, label: str = "") -> None:
     print(f"  y class counts  : {dict(zip(unique.tolist(), counts.tolist()))}")
     print(f"  Feature list    : {list(X.columns)}")
 
-    if X.isnull().sum().sum() > 0:
+    if missing_count > 0:
         missing_cols = X.columns[X.isnull().any()].tolist()
-        print(f"  WARNING — columns with missing values: {missing_cols}")
+        raise ValueError(
+            f"[validate] CRITICAL FAILURE: {missing_count} missing values detected "
+            f"in columns: {missing_cols}. Fix data engineering pipeline cascades."
+        )
+        
     if inf_count > 0:
-        print(f"  WARNING — infinite values detected, check engineer_features()")
+        raise ValueError(
+            f"[validate] CRITICAL FAILURE: Infinite values detected inside features. "
+            f"Check division-by-zero or mathematical transformations in engineer_features()."
+        )
 
 
 # ── Master Pipeline ───────────────────────────────────────────────────────────
@@ -269,8 +316,8 @@ def build_features(df: pd.DataFrame) -> tuple:
         activity_map — encoding dict {class_name: int}
         feature_names— ordered list of final feature column names
     """
-    df = drop_unused_columns(df)
     df = engineer_features(df)
+    df = drop_unused_columns(df)
     df = encode_categorical(df)
     df, y, activity_map = encode_target(df)
 
