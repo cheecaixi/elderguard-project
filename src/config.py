@@ -39,10 +39,11 @@ RF_PARAMS = {
     "n_jobs": -1,
 }
 
-# XGBoost 
+# XGBoost
+# In config.py
 XGB_PARAMS = {
     "n_estimators": 100,
-    "max_depth": 5,
+    "max_depth": 4,
     "learning_rate": 0.1,
     "subsample": 0.8,
     "colsample_bytree": 0.8,

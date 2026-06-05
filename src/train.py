@@ -18,6 +18,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message="`sklearn.utils.parallel.delayed` should be used with")
 warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 
 try:
     from imblearn.over_sampling import SMOTE
@@ -29,6 +30,7 @@ except ImportError:
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
+from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -75,7 +77,7 @@ def get_models() -> dict:
             "model": XGBClassifier(**XGB_PARAMS),
             "param_grid": XGB_PARAM_GRID,
             "needs_scaling": False,
-            "use_sample_weight": True,
+            "use_sample_weight": False,
         },
     }
 
@@ -204,6 +206,13 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
             print("[train] Tuning skipped — using default params")
             fitted        = cfg["model"]
             after_cv_mean = before_cv_mean
+
+        if name == "xgboost":
+            print(f"[train] XGBoost: Using scale_pos_weight={fitted.get_params().get('scale_pos_weight', 'default')} for class imbalance")
+        elif cfg.get("use_sample_weight"):
+            sw = compute_sample_weight("balanced", y_train)
+            fitted.fit(X, y_train, sample_weight=sw)
+            print(f"[train] {name}: final refit with sample_weight applied")
 
         print(f"\n[train] Note: train metrics will be optimistic — use evaluate.py for true test-set performance")
 
