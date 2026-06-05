@@ -1,4 +1,4 @@
 {
-  "best_model": "xgboost",
-  "cv_score": 0.7935332657862443
+  "best_model": "random_forest",
+  "cv_score": 0.5230558314780076
 }
