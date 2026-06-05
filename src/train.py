@@ -18,6 +18,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message="`sklearn.utils.parallel.delayed` should be used with")
 warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 
 try:
     from imblearn.over_sampling import SMOTE
@@ -206,8 +207,9 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
             fitted        = cfg["model"]
             after_cv_mean = before_cv_mean
 
-        # ── Final refit with sample weights (XGBoost only) ───────────
-        if cfg.get("use_sample_weight"):
+        if name == "xgboost":
+            print(f"[train] XGBoost: Using scale_pos_weight={fitted.get_params().get('scale_pos_weight', 'default')} for class imbalance")
+        elif cfg.get("use_sample_weight"):
             sw = compute_sample_weight("balanced", y_train)
             fitted.fit(X, y_train, sample_weight=sw)
             print(f"[train] {name}: final refit with sample_weight applied")

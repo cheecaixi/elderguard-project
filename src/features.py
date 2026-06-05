@@ -39,11 +39,19 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     Create domain-informed features from existing sensor columns.
 
     Features created:
-    - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
-    - CO2_Mean            : Mean of both CO2 sensors.
-    - MOS_Mean            : Mean of all 4 Metal Oxide Sensor units.
-    - MOS_Range           : max - min across all 4 MOS units.
-    - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
+    - CO2_Disagreement: Captures sensor disagreement indicating measurement anomalies
+    - CO2_Mean: Robust CO2 estimate; elevated levels indicate prolonged occupancy
+    - MOS_Mean: Composite VOC score; elevated levels indicate activity or poor air quality
+    - MOS_Range: Detects localized pollution sources and air stratification
+    - MOS_Ratio: Normalized variation; sensitive to abnormal patterns regardless of scale
+    - CO2_Temp_Interaction: Combined health risk; air quality + thermal stress synergy
+    - Temp_Change: Activity proxy; temperature volatility indicates movement
+    - Ambient_Light_Ordinal: Routine proxy; abnormal light patterns signal emergencies
+    
+    All engineered features are derived from domain knowledge about elderly monitoring:
+    - Activity patterns (movement, daily routines)
+    - Air quality health risks (CO2, VOCs)
+    - Environmental safety (temperature extremes, sensor reliability)
     """
     df = df.copy()
     
@@ -57,11 +65,10 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
         print("[engineer_features] Created CO2_Mean")
 
-        # Drop raw CO2 sensors
         df = df.drop(columns=["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"], errors="ignore")
         print("[engineer_features] Dropped individual CO2 sensor columns")
 
-    # Mean and range of all MOS units
+    # Mean, range, and ratio of all MOS units
     mos_cols = [
         "MetalOxideSensor_Unit1",
         "MetalOxideSensor_Unit2",
@@ -74,10 +81,20 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
         df["MOS_Range"] = df[mos_cols].max(axis=1) - df[mos_cols].min(axis=1)
         print("[engineer_features] Created MOS_Range")
+        
+        # Add MOS_Ratio (avoid division by zero)
+        df["MOS_Ratio"] = df["MOS_Range"] / (df["MOS_Mean"] + 1e-6)
+        print("[engineer_features] Created MOS_Ratio")
 
     if "CO2_Mean" in df.columns and "Temperature" in df.columns:
         df["CO2_Temp_Interaction"] = df["CO2_Mean"] * df["Temperature"]
-        print("[engineer_features] Created CO2_Temp_Interaction")   
+        print("[engineer_features] Created CO2_Temp_Interaction")  
+
+    # Rapid environmental changes (rolling differences)
+    if "Temperature" in df.columns and "Session ID" in df.columns:
+        df["Temp_Change"] = df.groupby("Session ID")["Temperature"].diff().abs()
+        df["Temp_Change"] = df["Temp_Change"].fillna(0)  # Fill first row of each session
+        print("[engineer_features] Created Temp_Change")     
 
     # Ambient light ordinal encoding
     if "Ambient Light Level" in df.columns:
@@ -90,9 +107,6 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         }
         df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order).astype(int)
         print("[engineer_features] Created Ambient_Light_Ordinal")
-        print("[engineer_features] Light level mapping applied:")
-        for label, code in light_order.items():
-            print(f"    {label} → {code}")
 
     return df
 
@@ -198,7 +212,7 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
         "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
         "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
         "CO2_Disagreement", "CO2_Mean",
-        "MOS_Mean", "MOS_Range","MOS_Ratio", "CO2_Temp_Interaction"
+        "MOS_Mean", "MOS_Range", "MOS_Ratio", "CO2_Temp_Interaction", "Temp_Change"
     ]]
 
     df_scaled = df.copy()
@@ -279,15 +293,17 @@ def build_features(df: pd.DataFrame) -> tuple:
     # These were identified via permutation importance on the held-out
     # test set — shuffling them improved or did not hurt macro F1,
     # meaning they contribute noise rather than signal.
-    WEAK_FEATURES = [
-        "Ambient_Light_Ordinal",       # perm rank 19 — negative score
-        "Time of Day_night",           # perm rank 20 — most negative
-        "CO2_Mean",                    # perm rank 17 — negative score
-        "MOS_Mean",                    # perm rank 12 — near zero
-    ]
-    weak_to_drop = [f for f in WEAK_FEATURES if f in df.columns]
-    df = df.drop(columns=weak_to_drop)
-    print(f"[build_features] Dropped weak features: {weak_to_drop}")
+    # WEAK_FEATURES = [
+    #     "Temp_Change",
+    #     "Time of Day_evening", 
+    #     "HVAC Operation Mode_heating_active",
+    #     "HVAC Operation Mode_maintenance_mode",
+    #     "Ambient_Light_Ordinal",  # Low importance
+    # ]
+
+    # weak_to_drop = [f for f in WEAK_FEATURES if f in df.columns]
+    # df = df.drop(columns=weak_to_drop)
+    # print(f"[build_features] Dropped weak features: {weak_to_drop}")
 
     # encode_target called once only
     df, y, activity_map = encode_target(df)
