@@ -40,38 +40,26 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
     Features created:
     - CO2_Disagreement    : |Infrared CO2 - ElectroChemical CO2|
-                            Large disagreement signals sensor drift or rapid
-                            CO2 flux during high physical activity.
     - CO2_Mean            : Mean of both CO2 sensors.
-                            Reduces per-sensor noise into a single CO2 signal
-                            and is more robust than using either sensor alone.
     - MOS_Mean            : Mean of all 4 Metal Oxide Sensor units.
-                            Reduces per-sensor noise into a single VOC signal.
     - MOS_Range           : max - min across all 4 MOS units.
-                            Captures spread/variance between units — a wide
-                            range suggests localised VOC hotspots linked to
-                            elevated physical activity.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
-                            Preserves natural order for linear models.
-
-    - CO2_rolling_avg_3    : 3-step moving average of CO2 to capture ambient accumulation.
-    - MOS_rolling_avg_3    : 3-step moving average of VOC signals.
-    - Temp_rolling_avg_3   : 3-step moving average of temperature.
-    - CO2_change_3         : Velocity/rate of change of CO2 over a 3-step delta window.
-    - Temp_change_3        : Velocity/rate of change of Temperature over a 3-step delta window.                        
     """
     df = df.copy()
     
-    # CO2 sensor disagreement
+    # CO2 sensor disagreement + mean
     if "CO2_InfraredSensor" in df.columns and "CO2_ElectroChemicalSensor" in df.columns:
         df["CO2_Disagreement"] = (
             df["CO2_InfraredSensor"] - df["CO2_ElectroChemicalSensor"]
         ).abs()
         print("[engineer_features] Created CO2_Disagreement")
 
-        # CO2 Mean — average of both CO2 sensors
         df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
         print("[engineer_features] Created CO2_Mean")
+
+        # Drop raw CO2 sensors
+        df = df.drop(columns=["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"], errors="ignore")
+        print("[engineer_features] Dropped individual CO2 sensor columns")
 
     # Mean and range of all MOS units
     mos_cols = [
@@ -84,7 +72,6 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["MOS_Mean"] = df[mos_cols].mean(axis=1)
         print("[engineer_features] Created MOS_Mean")
 
-        # MOS Range — spread between highest and lowest MOS unit
         df["MOS_Range"] = df[mos_cols].max(axis=1) - df[mos_cols].min(axis=1)
         print("[engineer_features] Created MOS_Range")
 
@@ -97,41 +84,11 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             "bright":      3,
             "very_bright": 4,
         }
-        df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order)
-        df["Ambient_Light_Ordinal"] = df["Ambient_Light_Ordinal"].astype(int)
+        df["Ambient_Light_Ordinal"] = df["Ambient Light Level"].map(light_order).astype(int)
         print("[engineer_features] Created Ambient_Light_Ordinal")
         print("[engineer_features] Light level mapping applied:")
         for label, code in light_order.items():
             print(f"    {label} → {code}")
-
-    if "Session ID" in df.columns:
-        print("[engineer_features] Extracting session-aware rolling window context...")
-        
-        # Group by Session ID to track individual sequence paths safely
-        session_gp = df.groupby("Session ID")
-        
-        # Moving Averages (Smooth out momentary spikes, capture prolonged buildup)
-        if "CO2_Mean" in df.columns:
-            df["CO2_rolling_avg_3"] = session_gp["CO2_Mean"].transform(lambda x: x.rolling(3, min_periods=1).mean())
-        elif "CO2_InfraredSensor" in df.columns:
-            df["CO2_rolling_avg_3"] = session_gp["CO2_InfraredSensor"].transform(lambda x: x.rolling(3, min_periods=1).mean())
-            
-        if "MOS_Mean" in df.columns:
-            df["MOS_rolling_avg_3"] = session_gp["MOS_Mean"].transform(lambda x: x.rolling(3, min_periods=1).mean())
-            
-        if "Temperature" in df.columns:
-            df["Temp_rolling_avg_3"] = session_gp["Temperature"].transform(lambda x: x.rolling(3, min_periods=1).mean())
-        
-        # Deltas / Directional Velocity (Differentiate flat baselines from surging active baselines)
-        if "CO2_InfraredSensor" in df.columns:
-            df["CO2_change_3"] = df["CO2_InfraredSensor"] - session_gp["CO2_InfraredSensor"].shift(3).fillna(df["CO2_InfraredSensor"])
-            
-        if "Temperature" in df.columns:
-            df["Temp_change_3"] = df["Temperature"] - session_gp["Temperature"].shift(3).fillna(df["Temperature"])
-            
-        print("[engineer_features] Created temporal features: CO2_rolling_avg_3, MOS_rolling_avg_3, Temp_rolling_avg_3, CO2_change_3, Temp_change_3")
-    else:
-        print("[engineer_features] WARNING: 'Session ID' missing from input frame. Skipping historical features.")
 
     return df
 
@@ -226,15 +183,6 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     - Not required for Random Forest / Gradient Boosting (rank-based splits).
     - Both scaled and unscaled versions are saved so each model
       uses the appropriate input.
-    Appended session-aware rolling averages and change velocity
-    features to the standardization array to prevent feature scale distortion.
-
-    Usage:
-        # Training — fit on train data only:
-        X_train_scaled, scaler = scale_features(X_train)
-
-        # Inference / test — transform only, no refitting:
-        X_test_scaled, _ = scale_features(X_test, scaler=scaler)
 
     Excluded from scaling:
     - One-hot encoded dummy columns (already 0/1)
@@ -243,13 +191,10 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     """
     scale_cols = [col for col in df.columns if col in [
         "Temperature", "Humidity",
-        "CO2_InfraredSensor", "CO2_ElectroChemicalSensor",
         "MetalOxideSensor_Unit1", "MetalOxideSensor_Unit2",
         "MetalOxideSensor_Unit3", "MetalOxideSensor_Unit4",
         "CO2_Disagreement", "CO2_Mean",
-        "MOS_Mean", "MOS_Range",
-        "CO2_rolling_avg_3", "MOS_rolling_avg_3", "Temp_rolling_avg_3",
-        "CO2_change_3", "Temp_change_3"
+        "MOS_Mean", "MOS_Range"
     ]]
 
     df_scaled = df.copy()

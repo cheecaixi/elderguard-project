@@ -39,13 +39,13 @@ RF_PARAMS = {
 
 # XGBoost
 XGB_PARAMS = {
-    "n_estimators":  200,
-    "max_depth":     5,
-    "learning_rate": 0.1,
-    "tree_method":   "hist",
-    "eval_metric":   "mlogloss",
-    "random_state":  RANDOM_STATE,
-    "n_jobs":        -1,
+    "n_estimators": 150,       
+    "max_depth": 3,            
+    "learning_rate": 0.03,    
+    "subsample": 0.6,
+    "colsample_bytree": 0.6,
+    "random_state": RANDOM_STATE,
+    "eval_metric": "mlogloss"
 }
 
 # Decision Tree 
@@ -69,11 +69,9 @@ RF_PARAM_GRID = {
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators":     [150, 250],
-    "max_depth":        [4, 5, 6],    
-    "learning_rate":    [0.03, 0.05],
-    "subsample":        [0.7, 0.8],
-    "colsample_bytree": [0.7,  0.8]
+    "n_estimators":     [100, 150, 200],
+    "max_depth":        [3, 4],   
+    "learning_rate":    [0.01, 0.03, 0.05]
 }
 
 DT_PARAM_GRID = {
