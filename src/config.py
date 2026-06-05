@@ -30,54 +30,56 @@ TUNE_MODELS = True
 # ── Default Model Parameters (used when TUNE_MODELS = False) ──
 # Random Forest
 RF_PARAMS = {
-    "random_state":     RANDOM_STATE,
-    "class_weight":     "balanced",
-    "max_depth":        8,
-    "min_samples_leaf": 16,
     "n_estimators":     200,
-    "max_features":     "sqrt",
+    "min_samples_leaf": 2,
+    "class_weight":     "balanced_subsample",
+    "random_state":     RANDOM_STATE,
+    "n_jobs":           -1,
 }
 
-# HistGradientBoosting Classifier (Replaces XGBoost)
-GB_PARAMS = {
-    "random_state": RANDOM_STATE,
-    "class_weight": "balanced",
-    "max_iter": 300,           
-    "learning_rate": 0.05,
-    "max_depth": 5,              
-    "early_stopping": True,          
-    "n_iter_no_change": 10,        
-    "validation_fraction": 0.1        
+# XGBoost
+XGB_PARAMS = {
+    "n_estimators":  200,
+    "max_depth":     5,
+    "learning_rate": 0.1,
+    "tree_method":   "hist",
+    "eval_metric":   "mlogloss",
+    "random_state":  RANDOM_STATE,
+    "n_jobs":        -1,
 }
 
 # Logistic Regression
 LR_PARAMS = {
-    "random_state": RANDOM_STATE,
+    "max_iter":     1000,
     "class_weight": "balanced",
-    "max_iter": 1000,
-    "solver": "lbfgs"
+    "random_state": RANDOM_STATE,
 }
 
 # ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
+# Only the most impactful parameters are tuned to keep runtime reasonable.
+# 5-fold StratifiedKFold CV is used to preserve class distribution.
+# Macro F1 is the scoring metric — consistent with evaluation.
+
 RF_PARAM_GRID = {
-    "model__max_depth":        [10, 12, 14],
-    "model__min_samples_leaf": [24, 32, 48],      
-    "model__n_estimators":     [200, 300],
-    "model__max_features":     [0.5],
-    "model__class_weight":     ["balanced", "balanced_subsample"],
+    "n_estimators":     [100, 200],
+    "max_depth":        [4, 6, 8, 10],
+    "min_samples_leaf": [2, 4, 8, 16],
+    "max_features":     ["sqrt"]
 }
 
-GB_PARAM_GRID = {
-    "model__learning_rate":    [0.03, 0.05],
-    "model__max_depth":        [4, 5, 6],
-    "model__max_iter":         [100, 150, 200],
-    "model__min_samples_leaf": [16, 20, 30],
+XGB_PARAM_GRID = {
+    "n_estimators":     [100, 200, 300],
+    "max_depth":        [3, 4, 5],
+    "learning_rate":    [0.05, 0.1, 0.2],
+    "subsample":        [0.8],
+    "colsample_bytree": [0.8],
 }
 
 LR_PARAM_GRID = {
-    "model__C": [0.01, 0.1, 1.0, 10.0]
+    "C":      [0.01, 0.1, 1.0, 10.0],
+    "solver": ["lbfgs", "saga"],
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 5          
-CV_SCORING = "f1_macro"
+CV_FOLDS   = 3           # number of folds for StratifiedKFold
+CV_SCORING = "f1_macro"  # primary metric — treats all classes equally

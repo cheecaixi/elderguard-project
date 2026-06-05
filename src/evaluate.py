@@ -89,8 +89,7 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     model, features, rev_map = load_model(model_dir, model_name)
 
     # ── BEFORE: training set ──────────────────────────────────────────────────
-    # pipeline handles scaling internally now
-    needs_scaled = False
+    needs_scaled = (model_name == "logistic_regression")
 
     X_train, y_train = load_train_data(model_dir, use_scaled=needs_scaled)
     X_train          = X_train[features]
