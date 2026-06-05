@@ -62,18 +62,18 @@ DT_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [150, 300, 400],
-    "max_depth":        [14, 16, 18],
-    "min_samples_leaf": [5, 10, 15],
-    "max_features":     ["sqrt"]
+    "n_estimators":     [150, 250],
+    "max_depth":        [6, 8, 10],
+    "min_samples_leaf": [15, 25, 40],   
+    "max_features":     ["sqrt"]      
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators":     [200, 300],
-    "max_depth":        [6, 7, 8],
-    "learning_rate":    [0.02, 0.04],
+    "n_estimators":     [150, 250],
+    "max_depth":        [4, 5, 6],,        
+    "learning_rate":    [0.03, 0.05],
     "subsample":        [0.7, 0.8],
-    "colsample_bytree": [0.8]
+    "colsample_bytree": [0.7,  0.8]
 }
 
 DT_PARAM_GRID = {
