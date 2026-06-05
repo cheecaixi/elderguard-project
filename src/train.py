@@ -49,14 +49,19 @@ def get_models() -> dict:
     """
     Define the three models used in the pipeline.
 
-    - LogisticRegression      : linear model for binary classification; requires scaling.
-    - RandomForestClassifier  : ensemble of trees, robust to outliers and
-                                non-linear interactions; no scaling needed.
-    - XGBClassifier           : gradient boosting with sample_weight for class
-                                imbalance handling; generally strongest on tabular data.
+    - LogisticRegression    : Linear model; requires scaled continuous values.
+    - RandomForestClassifier: Ensemble of trees; handles non-linear interactions;
+                              does not strictly require scaling.
+    - XGBClassifier         : Gradient boosted trees optimized for tabular layouts.
 
-    All tree models use class_weight=balanced or sample_weight to handle the
-    ~58/28/14% class imbalance across low/moderate/high activity.
+    Imbalance Management Execution:
+    - This model registry acts as the entry point for configuration variables.
+    - Logistic Regression and Random Forest pass downstream parameters 
+      (class_weight='balanced' and 'balanced_subsample') which mathematically 
+      penalize class underrepresentation during training.
+    - XGBoost does not have a built-in class_weight parameter, so we pass
+      sample weights to the fit method based on class frequencies
+    - To handle the ~58/28/14% class imbalance across low/moderate/high activity.
     """
     return {
         "logistic_regression": {
@@ -84,7 +89,13 @@ def get_models() -> dict:
 def split_data(X: pd.DataFrame, y: np.ndarray, save_dir: str):
     """
     Stratified train/test split. Both splits saved to disk for evaluate.py.
-    stratify=y preserves class distribution across both splits.
+
+    Justification:
+    - Executing train_test_split before scaling, manual validation folds, or
+      tuning creates a complete firewall. The evaluation set remains pristine 
+      and entirely hidden from training mechanics, preventing data leakage.
+    - stratify=y forces the training set and test set to have identical proportions 
+      of the activity classes, guaranteeing stable validation bounds.
     """
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
@@ -107,14 +118,15 @@ def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
     """
     Hyperparameter tuning using GridSearchCV with StratifiedKFold.
 
-    SMOTE is applied inside each CV fold via ImbPipeline to prevent
-    data leakage. Applying SMOTE before CV inflates scores by ~0.21
-    because synthetic validation samples contaminate training folds.
-
-    Justification:
-    - GridSearchCV exhaustively searches all param_grid combinations.
-    - StratifiedKFold preserves class distribution in each fold.
-    - Macro F1 used as scoring metric — consistent with evaluation.
+    Justification of actual execution logic:
+    - If SMOTE is available, an ImbPipeline wraps the SMOTE resampling step and 
+      the classifier together. This ensures SMOTE runs dynamically inside each 
+      individual cross-validation fold to calculate non-leaked validation scores.
+    - Grid Search optimizes for Macro F1 scores across configurations.
+    - Crucially, the final returned best estimator is automatically refit by 
+      scikit-learn on the whole dataset using the full ImbPipeline structure.
+      Therefore, your tuned parameters are optimized and saved using a 
+      SMOTE-augmented architecture.
     """
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
@@ -132,8 +144,7 @@ def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
         print(f"[tune] {name} best CV {CV_SCORING}: {gs.best_score_:.4f}")
         return gs.best_estimator_.named_steps["clf"], gs.best_score_
     else:
-        gs = GridSearchCV(model, param_grid, cv=cv, scoring=CV_SCORING,
-                          n_jobs=-1, verbose=0)
+        gs = GridSearchCV(model, param_grid, cv=cv, scoring=CV_SCORING, n_jobs=-1, verbose=0)
         gs.fit(X_train, y_train, **fit_kwargs)
         print(f"[tune] {name} best params : {gs.best_params_}")
         print(f"[tune] {name} best CV {CV_SCORING}: {gs.best_score_:.4f}")
@@ -144,10 +155,16 @@ def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
 def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
                  y_train: np.ndarray, tune: bool) -> dict:
     """
-    Train all models. SMOTE is applied inside each CV fold via tune_model
-    to prevent leakage. The final model is fit on the full training set
-    without SMOTE — class_weight='balanced'/'balanced_subsample' handles
-    imbalance at final fit time.
+    Orchestrates model baseline loops, hyperparameter optimization, and tracking.
+    
+    Actual execution logic breakdown:
+    - "BEFORE TUNING": Evaluates baseline models via manual cross-validation folds. 
+      Inside each loop fold, SMOTE synthetic rows are generated on a float64 copy of 
+      the data matrix to measure baseline macro F1 score without leakage.
+    - Right after scoring inside the baseline step, the raw base model is fit directly 
+      on the full training array without a standalone SMOTE pre-step. For tree or 
+      linear models, internal algorithmic class weights handle imbalance here.
+    - "AFTER TUNING": Re-routes the training path through the GridSearchCV pipeline.
     """
     models  = get_models()
     trained = {}
@@ -177,7 +194,7 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
         before_cv_mean = np.mean(before_scores)
         before_cv_std  = np.std(before_scores)
 
-        # Train on full X (no SMOTE) — class_weight handles imbalance
+        # Baseline training on full un-resampled training partition
         cfg["model"].fit(X, y_train)
         y_pred = cfg["model"].predict(X)
         print(f"[before] CV {CV_SCORING}    : {before_cv_mean:.4f} (+/- {before_cv_std:.4f})")
@@ -230,11 +247,11 @@ def save_artefacts(trained: dict, save_dir: str, scaler,
     Save all models and pipeline artefacts to disk.
 
     Files saved:
-    - <model_name>.joblib  : trained sklearn/xgb model
-    - scaler.joblib        : fitted StandardScaler
-    - feature_names.json   : column order for consistent inference
-    - activity_map.json    : class encoding (for decoding predictions)
-    - best_model.json      : best model name by CV macro F1
+    - <model_name>.joblib  : trained model binaries
+    - scaler.joblib        : fitted StandardScaler for validation inference runs
+    - feature_names.json   : locks down required matrix dimensions for evaluation
+    - activity_map.json    : reverse label translation map
+    - best_model.json      : logs the champion model based on cross-validation macro F1
     """
     os.makedirs(save_dir, exist_ok=True)
 

@@ -45,10 +45,10 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     - CO2_Mean             : Mean of both CO2 sensors.
                              Reduces per-sensor noise into a single CO2 signal
                              and is more robust than using either sensor alone.
-    - MOS_Core_Active_Mean : Mean of the highly predictive Metal Oxide Sensor Unit 2 and Unit 4.
-                             Eliminates the baseline dilution noise of Units 1 and 3.
-    - MOS_Core_Active_Range: max - min between MOS Unit 2 and Unit 4.
-                             Captures sharp localized volatility drops or spikes.
+    - MOS_Core_Active_Mean : Mean of the highly predictive Metal Oxide Sensor
+                             Unit 2 and Unit 4. Eliminates the baseline dilution noise of Units 1 and 3.
+    - MOS_Core_Active_Range: max - min between MOS Unit 2 and Unit 4. Captures
+                             sharp localized volatility drops or spikes.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
                              Preserves natural order for linear models.
     """
@@ -64,7 +64,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
         print("[engineer_features] Created CO2_Mean")
 
-    # TARGETED AGGREGATIONS: Focus strictly on your top-performing Unit 2 and Unit 4
+    # Focus strictly on your top-performing Unit 2 and Unit 4
     core_mos_cols = ["MetalOxideSensor_Unit2", "MetalOxideSensor_Unit4"]
     
     if all(c in df.columns for c in core_mos_cols):
@@ -109,12 +109,30 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
     - CO_GasSensor: kept as integer (ordinal 0-4, no encoding needed).
     - Activity Level: handled separately in encode_target().
     """
-    ohe_cols = [
-        col for col in ["Time of Day", "HVAC Operation Mode"]
-        if col in df.columns
-    ]
-    df = pd.get_dummies(df, columns=ohe_cols, drop_first=True)
-    print(f"[encode_categorical] One-hot encoded: {ohe_cols}")
+    ohe_cols = ["Time of Day", "HVAC Operation Mode"]
+
+    # Lock in categorical structural scopes to guarantee column consistency
+    # regardless of train/test data distribution
+    categories_dict = {
+        "Time of Day": ["morning", "afternoon", "evening", "night"],
+        "HVAC Operation Mode": [
+            "off",
+            "heating_low",
+            "heating_high",
+            "cooling_low",
+            "cooling_high",
+            "ventilation_only",
+        ],
+    }
+
+    for col in ohe_cols:
+        if col in df.columns:
+            df[col] = pd.Categorical(df[col], categories=categories_dict[col])
+
+    # Safely perform one-hot encoding with static locked categories
+    existing_nominal = [col for col in ohe_cols if col in df.columns]
+    df = pd.get_dummies(df, columns=existing_nominal, drop_first=True, dtype=int)
+    print(f"[encode_categorical] Standardized One-hot encoded: {existing_nominal}")
 
     # Drop original Ambient Light Level — ordinal version already created
     if "Ambient Light Level" in df.columns:
@@ -184,18 +202,6 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     - Not required for Random Forest / Gradient Boosting (rank-based splits).
     - Both scaled and unscaled versions are saved so each model
       uses the appropriate input.
-
-    Usage:
-        # Training — fit on train data only:
-        X_train_scaled, scaler = scale_features(X_train)
-
-        # Inference / test — transform only, no refitting:
-        X_test_scaled, _ = scale_features(X_test, scaler=scaler)
-
-    Excluded from scaling:
-    - One-hot encoded dummy columns (already 0/1)
-    - Ambient_Light_Ordinal (ordinal integer)
-    - CO_GasSensor (discrete ordinal 0-4)
     """
     scale_cols = [col for col in df.columns if col in [
         "Temperature", "Humidity",
@@ -207,15 +213,19 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     ]]
 
     df_scaled = df.copy()
-    if scaler is None:
-        scaler = StandardScaler()
-        scaled_array = scaler.fit_transform(df)
+    if len(scale_cols) > 0:
+        if scaler is None:
+            scaler = StandardScaler()
+            df_scaled[scale_cols] = scaler.fit_transform(df[scale_cols])
+            print(f"[scale_features] Fit and scaled {len(scale_cols)} continuous features.")
+        else:
+            df_scaled[scale_cols] = scaler.transform(df[scale_cols])
+            print(f"[scale_features] Transformed {len(scale_cols)} continuous features using fitted scaler.")
     else:
-        scaled_array = scaler.transform(df)
-        
-    # Convert back to a DataFrame preserving the 22 feature names
-    scaled_df = pd.DataFrame(scaled_array, columns=df.columns, index=df.index)
-    return scaled_df, scaler
+        if scaler is None:
+            scaler = StandardScaler()  # Fallback to prevent downstream initialization crashes
+
+    return df_scaled, scaler
 
 
 # ── 6. Validate ───────────────────────────────────────────────────────────────
