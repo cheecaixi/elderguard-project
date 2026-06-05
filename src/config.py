@@ -1,4 +1,4 @@
-# src/config.py
+# config.py
 # Central configuration for the ML pipeline
 
 import os
@@ -18,71 +18,76 @@ MAX_HUMIDITY = 100.0
 TARGET_COLUMN = "Activity Level"
 DROP_COLUMNS = ["Session ID"]
 
-# ── Train/Test Split & CV ─────────────────────────────────────
+# ── Train/Test Split ────────────────────────────────────────────────────
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
+<<<<<<< HEAD
 CV_FOLDS = 5  
 CV_SCORING = "f1_macro"                   
+=======
+>>>>>>> fa3bc54fcf820e0995bcd1a08b33583d3ccbe08a
 
-# ── Tuning Flag ───────────────────────────────────────────────
+# ── Tuning ────────────────────────────────────────────────────
+# Set TUNE_MODELS = True  to run GridSearchCV (slower, finds best params)
+# Set TUNE_MODELS = False to skip tuning and use default params below (faster)
 TUNE_MODELS = True
 
 # ── Default Model Parameters (used when TUNE_MODELS = False) ──
 # Random Forest
 RF_PARAMS = {
-    "n_estimators": 150,
-    "max_depth": 8,                   
-    "min_samples_split": 15,           
-    "min_samples_leaf": 8,
-    "max_features": "sqrt",
-    "class_weight": "balanced",       
-    "random_state": RANDOM_STATE,
-    "n_jobs": -1,
+    "n_estimators":     200,
+    "min_samples_leaf": 2,
+    "class_weight":     "balanced_subsample",
+    "random_state":     RANDOM_STATE,
+    "n_jobs":           -1,
 }
 
 # XGBoost
-# In config.py
 XGB_PARAMS = {
-    "n_estimators": 100,
-    "max_depth": 4,
+    "n_estimators":  200,
+    "max_depth":     5,
     "learning_rate": 0.1,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
-    "reg_alpha": 0.1,
-    "reg_lambda": 1.0,
-    "min_child_weight": 5,
-    "tree_method": "hist",
-    "eval_metric": "mlogloss",
-    "random_state": RANDOM_STATE,
-    "n_jobs": -1,
+    "tree_method":   "hist",
+    "eval_metric":   "mlogloss",
+    "random_state":  RANDOM_STATE,
+    "n_jobs":        -1,
 }
 
-# Logistic Regression
-LR_PARAMS = {
-    "max_iter": 1000,
-    "class_weight": "balanced",
-    "random_state": RANDOM_STATE,
-    "solver": "saga"
+# Decision Tree 
+DT_PARAMS = {
+    "max_depth":         6,              
+    "min_samples_leaf":  15,
+    "class_weight":      "balanced",     
+    "random_state":      RANDOM_STATE,
 }
 
 # ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
+# Only the most impactful parameters are tuned to keep runtime reasonable.
+# 5-fold StratifiedKFold CV is used to preserve class distribution.
+# Macro F1 is the scoring metric — consistent with evaluation.
+
 RF_PARAM_GRID = {
-    "n_estimators": [100, 200],
-    "max_depth": [6, 8, 10],    
-    "min_samples_leaf": [4, 8, 16],      
-    "max_features": ["sqrt"],
+    "n_estimators":     [150, 300, 400],
+    "max_depth":        [14, 16, 18],
+    "min_samples_leaf": [5, 10, 15],
+    "max_features":     ["sqrt"]
 }
 
 XGB_PARAM_GRID = {
-    "n_estimators": [50, 150, 250],
-    "max_depth": [4, 5, 6],
-    "learning_rate": [0.05, 0.1],
-    "subsample": [0.8],
-    "colsample_bytree": [0.8],
-    "gamma": [0, 0.1, 0.3]            # Added gamma to control tree complexity
+    "n_estimators":     [200, 300],
+    "max_depth":        [6, 7, 8],
+    "learning_rate":    [0.02, 0.04],
+    "subsample":        [0.7, 0.8],
+    "colsample_bytree": [0.8]
 }
 
-LR_PARAM_GRID = {
-    "C": [0.01, 0.1, 1.0, 10.0],
-    "solver": ["saga"]
+DT_PARAM_GRID = {
+    "max_depth":        [10, 14, 18],
+    "min_samples_leaf": [15, 30, 50],
+    "criterion":        ["gini", "entropy"],
+    "class_weight":     ["balanced"]
 }
+
+# ── Cross Validation ───────────────────────────────────────────
+CV_FOLDS   = 5           # number of folds for StratifiedKFold
+CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
