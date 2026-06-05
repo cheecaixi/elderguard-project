@@ -1,4 +1,33 @@
 {
-  "best_model": "random_forest",
-  "cv_score": 0.527698538845245
+    "best_model": "xgboost",
+    "cv_score": 0.5880704442937565,
+    "feature_names": [
+        "Temperature",
+        "Humidity",
+        "CO2_InfraredSensor",
+        "CO2_ElectroChemicalSensor",
+        "MetalOxideSensor_Unit1",
+        "MetalOxideSensor_Unit2",
+        "MetalOxideSensor_Unit3",
+        "MetalOxideSensor_Unit4",
+        "CO_GasSensor",
+        "MOS_Mean",
+        "MOS_Range",
+        "Ambient_Light_Ordinal",
+        "Time of Day_afternoon",
+        "Time of Day_evening",
+        "Time of Day_morning",
+        "Time of Day_night",
+        "HVAC Operation Mode_cooling_active",
+        "HVAC Operation Mode_eco_mode",
+        "HVAC Operation Mode_heating_active",
+        "HVAC Operation Mode_maintenance_mode",
+        "HVAC Operation Mode_off",
+        "HVAC Operation Mode_ventilation_only"
+    ],
+    "activity_map": {
+        "low_activity": 0,
+        "moderate_activity": 1,
+        "high_activity": 2
+    }
 }

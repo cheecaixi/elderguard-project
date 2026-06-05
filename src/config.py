@@ -21,7 +21,8 @@ DROP_COLUMNS = ["Session ID"]
 # ── Train/Test Split & CV ─────────────────────────────────────
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
-CV_FOLDS = 5                     
+CV_FOLDS = 5  
+CV_SCORING = "f1_macro"                   
 
 # ── Tuning Flag ───────────────────────────────────────────────
 TUNE_MODELS = True
