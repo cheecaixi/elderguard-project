@@ -272,6 +272,10 @@ def run_training(db_path: str = DB_PATH,
 
     # 2. Split (saves unscaled parquet files for evaluate.py)
     X_train, X_test, y_train, y_test = split_data(X, y, save_dir)
+    # Cast to float64 so SMOTE can generate synthetic samples without dtype conflicts.
+    # CO_GasSensor uses pandas Int64 (nullable) which SMOTE cannot cast back from float64.
+    X_train = X_train.astype("float64")
+    X_test  = X_test.astype("float64")
 
     # 3. Scale — Fit on train only, transform both (Kept for downstream file compatibility)
     X_train_scaled, scaler = scale_features(X_train)
