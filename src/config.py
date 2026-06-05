@@ -80,9 +80,9 @@ DT_PARAM_GRID = {
     "max_depth":        [10, 14, 18],
     "min_samples_leaf": [15, 30, 50],
     "criterion":        ["gini", "entropy"],
-    "class_weight": ["balanced"]
+    "class_weight":     ["balanced"]
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 3      # number of folds for StratifiedKFold
+CV_FOLDS   = 3           # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
