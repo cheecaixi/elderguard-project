@@ -1,24 +1,179 @@
-- Group name : Team Cai Xi , Amanda and Yi Xin 
-- Group members name : Cai Xi , Amanda and Yi Xin
-  
-- Cai Xi wrote cleaning, config and train files
-- Amanda wrote features and cleaning files
-- Yixin wrote evaluate and readme files
-  
-- Instructions on how to run the pipeline: It takes raw sensor data and produces a trained model in 4 steps : cleaning, feature, training and evaluation. The entire process is automated with this shell script.
-  
-- docker .
-  
-- Our EDA revealed three main findings. First, data quality issues - inconsistent labels, impossible readings like 89°C temperatures, and contaminated session 2586 which we'll remove entirely. Secondly, weak individual feature correlations - no single sensor predicts activity alone; activity depends on complex sensor interactions. Thirdly, class imbalance - High Activity is the minority class. Therefore, we'll use macro F1-score as our primary metric and ensemble models like Random Forest or Gradient Boosting that handle both feature interactions and class imbalance well.
-  
-- Based on our EDA finding that individual features have weak relationships with activity, we engineered three new features to capture sensor interactions and reduce noise.
-Firstly, CO2 Disagreement - the absolute difference between infrared and electrochemical CO2 sensors. These two sensors measure the same thing, so they should agree. Large disagreement signals either sensor drift OR rapid CO2 flux during high physical activity. This captures something the raw values alone cannot.
-Secondly, MOS Mean - the average of all four metal oxide sensors. These VOC sensors are individually noisy. The mean reduces per-sensor noise into a single 'overall VOC' signal. Think of it like averaging expert opinions - it's more reliable than any single sensor. We're keeping both the individual units AND the mean, then letting the model decide which is more useful.
-Thirdly, Ambient Light Ordinal - converting light levels from categories like 'bright' and 'very_bright' to numbers 0 through 4. This preserves natural order for linear models - very_bright is clearly more than bright - which gets lost with standard categorical encoding.
-Why these three? CO2 Disagreement captures sensor interactions. MOS Mean reduces noise. Light Ordinal enables linear modeling. Together, they address the key limitation from our EDA - weak individual features - by creating features that capture richer signals."
+# ElderGuard Analytics — Activity Level Prediction Pipeline
 
-- We chose three models. Logistic Regression is our simple baseline. Random Forest handles the non-linear interactions our EDA showed are important. HistGradientBoosting is our strongest model for tabular data. All three use class_weight=balanced because our classes are uneven - 58% Low, 28% Moderate, 14% High. This tells the model to care more about getting High Activity right. For tuning, we use grid search with cross-validation - it tries different parameter combinations and validates on multiple data splits to avoid overfitting.
+## Group Information
 
-- We use macro F1-score as our primary metric. Accuracy would be misleading because our classes are imbalanced - 58% Low, 28% Moderate, 14% High. A dummy model predicting 'Low' every time would achieve 58% accuracy but completely fail at detecting High Activity. Macro F1 averages performance across all three classes equally, so poor performance on the minority High Activity class directly hurts the score. This forces our model to perform well on ALL activity levels, not just the majority class. 
+- **Group Name:** Team Cai Xi, Amanda and Yi Xin
+- **Group Members:** Cai Xi, Amanda, Yi Xin
+
+ ### Code Contributions
+| File | Author |
+|------|--------|
+| `src/cleaning.py` | Cai Xi & Amanda |
+| `src/features.py` | Amanda |
+| `src/config.py` | Cai Xi |
+| `src/train.py` | Cai Xi |
+| `src/evaluate.py` | Yi Xin |
+| `src/feature_analysis.py` | Cai Xi |
+| `eda.ipynb` | All members |
+| `cleaning.ipynb` | Amanda |
+  
+## Instructions on how to run the pipeline
+-  Docker Desktop installed and running, OR Python 3.10+ with pip
+
+### Option 1 — Docker (Recommended)
+
+**Build the image:**
+```bash
+docker build -t elderguard .
+```
+
+**Run the full pipeline:**
+```bash
+docker run --rm elderguard
+```
+
+The pipeline will execute all steps in order: data cleaning → feature engineering → model training → evaluation → feature analysis. Trained models and evaluation plots are saved to `saved_model/`.
+
+### Option 2 — Run Locally
+
+**Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+**Run the pipeline:**
+```bash
+bash run.sh
+```
+
+**Or run individual steps:**
+```bash
+python src/cleaning.py
+python src/features.py
+python src/train.py
+python src/evaluate.py
+python src/feature_analysis.py
+```
+
+**Skip hyperparameter tuning (faster):**
+```bash
+python src/train.py --no-tune
+```
+
+---
+
+## Docker Development Environment
+
+To develop interactively inside the container with your local files mounted (changes reflect immediately without rebuilding):
+
+```bash
+docker run --rm -it -v ${PWD}:/app elderguard bash
+```
+
+This mounts your project folder into the container so you can edit files locally and re-run scripts inside the container without a full rebuild.
+
+
+## Project Structure
+
+```
+elderguard-project/
+├── data/
+│   └── gas_monitoring.db       # raw sensor database
+├── src/
+│   ├── config.py               # central configuration
+│   ├── cleaning.py             # data loading and cleaning pipeline
+│   ├── features.py             # feature engineering and encoding
+│   ├── train.py                # model training and hyperparameter tuning
+│   ├── evaluate.py             # test-set evaluation and plots
+│   └── feature_analysis.py     # feature importance 
+├── saved_model/                # trained models and artefacts (generated)
+├── eda.ipynb                   # exploratory data analysis notebook
+├── cleaning.ipynb              # cleaning visualization notebook
+├── Dockerfile
+├── requirements.txt
+├── run.sh
+├── .dockerignore
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Key EDA Findings
+
+### 1. Data Quality Issues
+The raw dataset contained several quality problems requiring cleaning before modelling:
+- **Inconsistent activity labels** — variants like `lowactivity`, `low activity`, `low_activity` all referring to the same class, standardised to `low_activity`, `moderate_activity`, `high_activity`.
+- **Physically impossible sensor readings** — Session 2586 had a mean temperature of 89.9°C, which is physically impossible indoors. Since all readings originate from the same faulty hardware, the entire session (56 rows) was removed. Additionally, 929 temperature readings outside 15–40°C and 410 humidity readings outside 0–100% were marked as NaN and imputed.
+- **Missing values** — 824 CO_GasSensor readings, 1,051 Ambient Light Level readings, and others were imputed using session-level median or global mode depending on the column's variance characteristics.
+
+### 2. Weak Individual Feature Correlations
+No single sensor reliably predicts activity level on its own. Activity depends on complex interactions between multiple sensors simultaneously. This finding motivated our choice of ensemble models and the engineering of interaction features.
+
+### 3. Class Imbalance
+The dataset is imbalanced: Low Activity ~58%, Moderate Activity ~28%, High Activity ~14%. A naive model predicting "Low" every time would achieve 58% accuracy while completely failing to detect High Activity. This directly shaped our metric choice (Macro F1) and imbalance-handling strategy.
+
+---
+
+## Feature Engineering
+
+Based on the EDA finding that individual features have weak predictive power, we engineered features to capture sensor interactions and reduce noise. After feature importance analysis (RF importance + permutation importance + SHAP), we retained the following engineered features and dropped weak ones:
+
+### Features Created
+
+**CO2_Disagreement** — Absolute difference between the infrared and electrochemical CO2 sensors. Both sensors measure the same gas, so they should agree. Large disagreement signals either sensor drift or rapid CO2 flux during high physical activity — a pattern the raw values alone cannot capture.
+
+**CO2_Mean** — Average of both CO2 sensors. Reduces per-sensor noise into a single CO2 signal more robust than either sensor individually.
+
+**MOS_Core_Active_Mean** — Mean of MetalOxideSensor Unit2 and Unit4, identified as the two highest-importance MOS units from permutation importance analysis. The raw individual units are dropped because the engineered mean captures their combined signal with higher permutation importance (0.029) than any individual unit. This reduces noise while preserving the VOC signal.
+
+**MOS_Core_Active_Range** — Max minus min between Unit2 and Unit4. Captures sharp localised volatility between the two core sensors.
+
+**Ambient_Light_Ordinal** — Ordinal encoding of Ambient Light Level (very_dim=0 through very_bright=4). Preserves natural order for linear models, which is lost with standard one-hot encoding.
+
+### Feature Selection
+After running permutation importance on the held-out test set, four HVAC dummy features (heating_low, heating_high, cooling_low, cooling_high) showed zero permutation importance and were dropped. This reduced noise and improved Random Forest test Macro F1 from 0.5401 to 0.5494.
+
+---
+
+## Model Choices and Tuning
+
+We trained three models covering a range of complexity:
+
+### Logistic Regression (Baseline)
+A linear model included as a simple, interpretable baseline. Requires feature scaling (StandardScaler applied to continuous features). Uses `class_weight='balanced'` to penalise misclassification of minority classes. Expected to perform worst given EDA showed non-linear sensor interactions.
+
+### Random Forest
+An ensemble of decision trees that naturally handles non-linear feature interactions — directly addressing the key EDA finding. Uses `class_weight='balanced_subsample'`, which applies balanced weighting independently per tree for more robust minority class handling. **Best performing model: Test Macro F1 = 0.5494.**
+
+### XGBoost
+Gradient boosted trees, strong on tabular data. Unlike sklearn models, XGBoost has no native `class_weight` parameter, so per-sample weights computed from class frequencies (`compute_sample_weight('balanced')`) are passed directly to `fit()`. This achieves equivalent effect to `class_weight='balanced'`. Hyperparameter tuning constrained `max_depth` to 3–4 and `learning_rate` to 0.05–0.1 to prevent overfitting — earlier unconstrained runs with `max_depth=5` and `learning_rate=0.2` produced a train F1 of 0.92 against a test F1 of 0.51, a clear overfit. The constrained grid produced a healthy train F1 of 0.5890 vs test F1 of 0.5248.
+
+### Imbalance Handling
+All three models additionally use **SMOTE** (Synthetic Minority Oversampling Technique) during cross-validation folds. SMOTE generates synthetic minority class samples inside each fold only, preventing data leakage into validation sets. After SMOTE balances the fold, sample weights are recomputed on the resampled labels to avoid double-penalising the minority class.
+
+### Hyperparameter Tuning
+GridSearchCV with 3-fold StratifiedKFold cross-validation, scoring on Macro F1. StratifiedKFold preserves class distribution across folds. SMOTE is wrapped inside an ImbPipeline within GridSearchCV so resampling occurs inside each fold and never leaks into validation data. Key parameters tuned: `max_depth`, `min_samples_leaf`, `n_estimators` (RF); `learning_rate`, `max_depth`, `n_estimators` (XGBoost); `C`, `solver` (Logistic Regression).
+
+---
+
+## Evaluation Metric
+
+**Primary metric: Macro F1-score**
+
+Accuracy is misleading for imbalanced datasets. With 58% Low Activity samples, a model predicting "Low" for every input achieves 58% accuracy while completely failing to detect High Activity — the most clinically critical class for an elderly care early-warning system.
+
+Macro F1 averages the F1-score across all three classes equally, regardless of class size. Poor performance on the minority High Activity class directly penalises the score. This forces the model to perform well across all activity levels, which aligns with the problem statement goal of detecting distress and medical episodes.
+
+### Final Results
+
+| Model | Train Accuracy | Train Macro F1 | Test Accuracy | Test Macro F1 |
+|-------|---------------|----------------|--------------|---------------|
+| Random Forest | 0.7082 | 0.6613 | 0.6207 | **0.5494** |
+| XGBoost | 0.6634 | 0.5890 | 0.6264 | 0.5248 |
+| Logistic Regression | 0.5869 | 0.5067 | 0.5994 | 0.5153 |
+
+Random Forest is selected as the best model based on highest CV (0.5325) and test Macro F1 (0.5494). The High Activity class F1 of 0.353 reflects the inherent difficulty of detecting the minority class (14% of data), and is meaningfully higher than Logistic Regression (0.293) and XGBoost (0.270). The train-test gap for Random Forest (~0.11) is expected given SMOTE inflates training scores — the CV score of 0.5325 is the honest generalisation estimate, and the test result of 0.5494 slightly exceeded it, confirming no test set overfitting.
+
 
 

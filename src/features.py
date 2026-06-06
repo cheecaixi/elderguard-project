@@ -284,7 +284,8 @@ def build_features(df: pd.DataFrame) -> tuple:
         "HVAC Operation Mode_heating_low",
         "HVAC Operation Mode_cooling_low",
         "HVAC Operation Mode_cooling_high",
-        "HVAC Operation Mode_heating_high"
+        "HVAC Operation Mode_heating_high",
+        " MetalOxideSensor_Unit2"
     ]
 
     df = df.drop(

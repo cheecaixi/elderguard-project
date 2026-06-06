@@ -1,6 +1,6 @@
 # feature_analysis.py
 # Identifies and evaluates feature contributions using the best saved model.
-# Combines RF feature importance, permutation importance, and SHAP values.
+# Combines RF feature importance and permutation importance.
 
 # Usage:
 #   python src/feature_analysis.py
@@ -137,60 +137,7 @@ def plot_permutation_importance(model, X_test: pd.DataFrame, y_test: np.ndarray,
     return perm.sort_values(ascending=False)
 
 
-# ── 4. SHAP Values ────────────────────────────────────────────────────────────
-def plot_shap(model, X_test: pd.DataFrame, feature_names: list,
-              model_name: str, model_dir: str) -> None:
-    """
-    SHAP summary plot showing direction and magnitude of each feature's
-    contribution per class.
-
-    Unlike importance scores, SHAP reveals:
-    - Whether high/low values of a feature push toward a specific class
-    - Which features are most influential for each activity level
-    """
-    try:
-        import shap
-    except ImportError:
-        print("[shap] shap not installed — skipping. Run: pip install shap")
-        return
-
-    print("\n[shap] Computing SHAP values (this may take a moment)...")
-    explainer   = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_test)
-
-    # ── Global summary (all classes) ─────────────────────────────────
-    plt.figure()
-    shap.summary_plot(
-        shap_values, X_test,
-        feature_names=feature_names,
-        class_names=CLASS_NAMES,
-        show=False
-    )
-    plt.title(f"SHAP Summary — {model_name.replace('_', ' ').title()} (All Classes)")
-    plt.tight_layout()
-    out = os.path.join(model_dir, "shap_summary_all.png")
-    plt.savefig(out, dpi=120, bbox_inches="tight")
-    print(f"[shap] Saved → {out}")
-
-    # ── Per-class summary ─────────────────────────────────────────────
-    for i, cls in enumerate(CLASS_NAMES):
-        plt.figure()
-        shap.summary_plot(
-            shap_values[i] if isinstance(shap_values, list) else shap_values,
-            X_test,
-            feature_names=feature_names,
-            show=False
-        )
-        plt.title(f"SHAP Summary — {model_name.replace('_', ' ').title()} ({cls.title()} Activity)")
-        plt.tight_layout()
-        out = os.path.join(model_dir, f"shap_summary_{cls}.png")
-        plt.savefig(out, dpi=120, bbox_inches="tight")
-        print(f"[shap] Saved → {out}")
-
-    plt.close("all")
-
-
-# ── 5. Comparison Table ───────────────────────────────────────────────────────
+# ── 4. Comparison Table ───────────────────────────────────────────────────────
 def print_comparison(rf_imp: pd.Series, perm_imp: pd.Series) -> None:
     """
     Side-by-side ranking comparison between RF importance and permutation
@@ -221,7 +168,6 @@ def run_feature_analysis(model_dir: str = MODEL_SAVE_DIR) -> None:
     rf_imp   = plot_rf_importance(model, feature_names, model_name, model_dir)
     perm_imp = plot_permutation_importance(model, X_test, y_test,
                                            feature_names, model_name, model_dir)
-    plot_shap(model, X_test, feature_names, model_name, model_dir)
     print_comparison(rf_imp, perm_imp)
 
     print(f"\n{'='*50}\n  FEATURE ANALYSIS — COMPLETE")
