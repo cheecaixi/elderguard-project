@@ -17,7 +17,6 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend — no display needed
 import matplotlib.pyplot as plt
-matplotlib.use('WebAgg')
 import seaborn as sns
 from sklearn.metrics import (
     accuracy_score, f1_score, confusion_matrix, classification_report

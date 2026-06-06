@@ -18,6 +18,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message="`sklearn.utils.parallel.delayed` should be used with")
 warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 
 try:
     from imblearn.over_sampling import SMOTE
@@ -29,6 +30,7 @@ except ImportError:
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
+from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -151,19 +153,35 @@ def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
         return gs.best_estimator_, gs.best_score_
 
 
-# ── Train ─────────────────────────────────────────────────────────
+# ── Sample Weights ─────────────────────────────────────────────────────────────
+def compute_sample_weights(y: np.ndarray) -> np.ndarray:
+    """
+    Compute per-sample weights inversely proportional to class frequency.
+
+    Used for XGBoost which has no built-in class_weight parameter.
+    Equivalent effect to class_weight='balanced' in sklearn models:
+    minority classes (e.g. high_activity ~14%) receive higher weight
+    so the model does not optimise purely for the majority class.
+
+    Formula: weight = n_samples / (n_classes * class_count)
+    """
+    return compute_sample_weight(class_weight="balanced", y=y)
+
+# ── Train ──────────────────────────────────────────────────────────────────────
 def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
                  y_train: np.ndarray, tune: bool) -> dict:
     """
     Orchestrates model baseline loops, hyperparameter optimization, and tracking.
-    
+
     Actual execution logic breakdown:
-    - "BEFORE TUNING": Evaluates baseline models via manual cross-validation folds. 
-      Inside each loop fold, SMOTE synthetic rows are generated on a float64 copy of 
+    - "BEFORE TUNING": Evaluates baseline models via manual cross-validation folds.
+      Inside each loop fold, SMOTE synthetic rows are generated on a float64 copy of
       the data matrix to measure baseline macro F1 score without leakage.
-    - Right after scoring inside the baseline step, the raw base model is fit directly 
-      on the full training array without a standalone SMOTE pre-step. For tree or 
+    - Right after scoring inside the baseline step, the raw base model is fit directly
+      on the full training array without a standalone SMOTE pre-step. For tree or
       linear models, internal algorithmic class weights handle imbalance here.
+      For XGBoost (use_sample_weight=True), per-sample weights are computed from
+      class frequencies and passed to fit() — equivalent to class_weight='balanced'.
     - "AFTER TUNING": Re-routes the training path through the GridSearchCV pipeline.
     """
     models  = get_models()
@@ -171,31 +189,50 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
     for name, cfg in models.items():
-        X      = X_train_scaled if cfg["needs_scaling"] else X_train
+        X = X_train_scaled if cfg["needs_scaling"] else X_train
         print(f"\n{'='*50}\n  {name.upper().replace('_', ' ')}\n{'='*50}")
 
-        # ── BEFORE tuning: honest CV score with SMOTE inside folds ──
+        # Pre-compute sample weights for models that need them (XGBoost)
+        sample_weights = (
+            compute_sample_weights(y_train) if cfg["use_sample_weight"] else None
+        )
+
+        # ── BEFORE tuning: honest CV score with SMOTE inside folds ──────────
         print(f"\n  --- BEFORE TUNING ---")
         before_scores = []
         for tr_idx, val_idx in cv.split(X, y_train):
             from sklearn.base import clone
             X_tr, X_val = X.iloc[tr_idx].copy(), X.iloc[val_idx].copy()
             y_tr, y_val = y_train[tr_idx], y_train[val_idx]
-            fold_model = clone(cfg["model"])
+            fold_model  = clone(cfg["model"])
+
             if SMOTE_AVAILABLE:
                 X_tr_f = X_tr.astype({c: "float64" for c in X_tr.columns})
                 X_tr_f, y_tr_f = SMOTE(random_state=RANDOM_STATE, k_neighbors=5).fit_resample(X_tr_f, y_tr)
                 X_tr_f = pd.DataFrame(X_tr_f, columns=X_tr.columns)
+                # After SMOTE the class distribution is balanced, so sample
+                # weights are recomputed on the resampled labels, not the
+                # original fold weights — prevents double-penalising minority class.
+                fold_fit_kwargs = (
+                    {"sample_weight": compute_sample_weights(y_tr_f)}
+                    if cfg["use_sample_weight"] else {}
+                )
+                fold_model.fit(X_tr_f, y_tr_f, **fold_fit_kwargs)
             else:
-                X_tr_f, y_tr_f = X_tr, y_tr
-            fold_model.fit(X_tr_f, y_tr_f)
+                fold_fit_kwargs = (
+                    {"sample_weight": compute_sample_weights(y_tr)}
+                    if cfg["use_sample_weight"] else {}
+                )
+                fold_model.fit(X_tr, y_tr, **fold_fit_kwargs)
+
             before_scores.append(f1_score(y_val, fold_model.predict(X_val), average="macro"))
 
         before_cv_mean = np.mean(before_scores)
         before_cv_std  = np.std(before_scores)
 
-        # Baseline training on full un-resampled training partition
-        cfg["model"].fit(X, y_train)
+        # Baseline training on full training partition
+        baseline_fit_kwargs = {"sample_weight": sample_weights} if cfg["use_sample_weight"] else {}
+        cfg["model"].fit(X, y_train, **baseline_fit_kwargs)
         y_pred = cfg["model"].predict(X)
         print(f"[before] CV {CV_SCORING}    : {before_cv_mean:.4f} (+/- {before_cv_std:.4f})")
         print(f"[before] Train accuracy  : {accuracy_score(y_train, y_pred):.4f}")
@@ -203,10 +240,12 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
         print(f"[before] Train precision : {precision_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
         print(f"[before] Train recall    : {recall_score(y_train, y_pred, average='macro', zero_division=0):.4f}")
 
-        # ── AFTER tuning ─────────────────────────────────────────────
+        # ── AFTER tuning ──────────────────────────────────────────────────────
         if tune:
-            fitted, best_cv_score = tune_model(cfg["model"], cfg["param_grid"],
-                                               X, y_train, name)
+            fitted, best_cv_score = tune_model(
+                cfg["model"], cfg["param_grid"], X, y_train, name,
+                fit_kwargs=baseline_fit_kwargs   # passes sample_weight into GridSearchCV
+            )
             print(f"\n  --- AFTER TUNING ---")
             y_pred = fitted.predict(X)
             print(f"[tune] CV {CV_SCORING}    : {best_cv_score:.4f}")
@@ -232,10 +271,10 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
 
     # Ranking
     print(f"\n{'='*50}\n  MODEL RANKING\n{'='*50}")
-    for rank, (name, cfg) in enumerate(
+    for rank, (n, c) in enumerate(
         sorted(trained.items(), key=lambda x: x[1]["cv_mean"], reverse=True), 1
     ):
-        print(f"  {rank}. {name:<25} CV F1 = {cfg['cv_mean']:.4f}")
+        print(f"  {rank}. {n:<25} CV F1 = {c['cv_mean']:.4f}")
 
     return trained
 
