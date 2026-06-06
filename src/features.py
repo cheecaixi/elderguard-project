@@ -281,9 +281,10 @@ def build_features(df: pd.DataFrame) -> tuple:
 
     # Feature selection based on feature importance analysis
     weak_features = [
-        "Ambient_Light_Ordinal",
-        "MetalOxideSensor_Unit2",
-        "MetalOxideSensor_Unit4"
+        "HVAC Operation Mode_heating_low",
+        "HVAC Operation Mode_cooling_low",
+        "HVAC Operation Mode_cooling_high",
+        "HVAC Operation Mode_heating_high"
     ]
 
     df = df.drop(
