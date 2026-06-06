@@ -96,6 +96,17 @@ elderguard-project/
 ├── .gitignore
 └── README.md
 ```
+## Version Control
+
+This project uses Git and GitHub for version control. Each member developed on their own named branch and merged into `main` upon completion.
+
+**Repository:** https://github.com/cheecaixi/elderguard-project
+
+**Branches:**
+- `main` — stable, submission-ready code
+- `Chee-Cai-Xi` — Cai Xi's development branch (cleaning, config, train, feature_analysis); merged to `main` upon completion
+- `Amanda-Jane-Lobo` — Amanda's development branch (cleaning, features); merged to `main` upon completion
+- `Ong=Yi-Xin` — Yi Xin's development branch (evaluate, readme); merged to `main` upon completion
 
 ---
 
