@@ -145,6 +145,28 @@ Based on the EDA finding that individual features have weak predictive power, we
 ### Feature Selection
 After running permutation importance on the held-out test set, four HVAC dummy features (heating_low, heating_high, cooling_low, cooling_high) showed zero permutation importance and were dropped. This reduced noise and improved Random Forest test Macro F1 from 0.5401 to 0.5494.
 
+### Key Predictive Features (from Permutation Importance on test set)
+Permutation Importance — shuffle one feature's values randomly, then measure how much the model's score dropsvin F1. Big drop = feature matters. Small drop = feature is not important. 
+
+| Rank | Feature | Permutation Importance |
+|------|---------|----------------------|
+| 1 | MOS_Core_Active_Mean | 0.0290 |
+| 2 | MetalOxideSensor_Unit3 | 0.0170 |
+| 3 | MetalOxideSensor_Unit1 | 0.0138 |
+| 4 | CO2_ElectroChemicalSensor | 0.0131 |
+| 5 | MetalOxideSensor_Unit4 | 0.0109 |
+| 6 | CO2_Disagreement | 0.0103 |
+
+`MOS_Core_Active_Mean` is the dominant predictor by a large margin — 0.029 vs 0.017 for the next feature. This confirms that VOC sensor activity is the strongest environmental signal for distinguishing activity levels. CO2-related features (both raw and engineered disagreement) consistently appear in the top 6, supporting our EDA finding that activity drives respiratory changes detectable by CO2 sensors.
+
+## Insight — RF Importance vs Permutation Importance
+
+MetalOxideSensor_Unit2 ranks 2nd by RF built-in importance but 11th by permutation importance. This means Unit2 helped the model fit training data but contributes little on unseen data — a sign of overfitting to noise in that sensor.
+
+RF built-in importance is computed on training data and can be misleading. Permutation importance on the held-out test set is more trustworthy because it measures actual generalisation, not training fit.
+
+**Next step:** Drop MetalOxideSensor_Unit2 from the feature set and retrain — if test F1 holds or improves, it confirms Unit2 was noise. This iterative process of importance analysis → feature removal → retraining is how production ML pipelines are refined over time.
+
 ---
 
 ## Model Choices and Tuning
@@ -185,6 +207,3 @@ Macro F1 averages the F1-score across all three classes equally, regardless of c
 | Logistic Regression | 0.5869 | 0.5067 | 0.5994 | 0.5153 |
 
 Random Forest is selected as the best model based on highest CV (0.5325) and test Macro F1 (0.5494). The High Activity class F1 of 0.353 reflects the inherent difficulty of detecting the minority class (14% of data), and is meaningfully higher than Logistic Regression (0.293) and XGBoost (0.270). The train-test gap for Random Forest (~0.11) is expected given SMOTE inflates training scores — the CV score of 0.5325 is the honest generalisation estimate, and the test result of 0.5494 slightly exceeded it, confirming no test set overfitting.
-
-
-
