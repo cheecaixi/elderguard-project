@@ -60,7 +60,8 @@ def get_models() -> dict:
     - This model registry acts as the entry point for configuration variables.
     - Logistic Regression and Random Forest pass downstream parameters 
       (class_weight='balanced' and 'balanced_subsample') which mathematically 
-      penalize class underrepresentation during training.
+      penalize class underrepresentation during training. (when missclassify high_activity, 
+      the model receives a stronger gradient signal to correct this error)
     - XGBoost does not have a built-in class_weight parameter, so we pass
       sample weights to the fit method based on class frequencies
     - To handle the ~58/28/14% class imbalance across low/moderate/high activity.
