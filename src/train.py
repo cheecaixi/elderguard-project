@@ -91,14 +91,15 @@ def get_models() -> dict:
 # ── Split ─────────────────────────────────────────────────────────────────────
 def split_data(X: pd.DataFrame, y: np.ndarray, save_dir: str):
     """
-    Stratified train/test split. Both splits saved to disk for evaluate.py.
+    Stratified 80/20 train/test split. Stratified means each split preserves the 
+    same class proportions, so the minority High Activity class doesn't accidentally 
+    end up mostly in one split. Both splits saved to disk for evaluate.py.
 
     Justification:
-    - Executing train_test_split before scaling, manual validation folds, or
-      tuning creates a complete firewall. The evaluation set remains pristine 
-      and entirely hidden from training mechanics, preventing data leakage.
-    - stratify=y forces the training set and test set to have identical proportions 
-      of the activity classes, guaranteeing stable validation bounds.
+    - Prevents Data Leakage: Splitting data before scaling or tuning creates a strict firewall, 
+      keeping the test set entirely hidden from the training process for unbiased evaluation.
+    - Preserves Class Balance: Using stratify=y ensures both training and test sets have 
+      identical class proportions, guaranteeing stable and reliable validation.
     """
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
@@ -121,15 +122,15 @@ def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
     """
     Hyperparameter tuning using GridSearchCV with StratifiedKFold.
 
-    Justification of actual execution logic:
+    Justification:
     - If SMOTE is available, an ImbPipeline wraps the SMOTE resampling step and 
-      the classifier together. This ensures SMOTE runs dynamically inside each 
-      individual cross-validation fold to calculate non-leaked validation scores.
-    - Grid Search optimizes for Macro F1 scores across configurations.
-    - Crucially, the final returned best estimator is automatically refit by 
-      scikit-learn on the whole dataset using the full ImbPipeline structure.
-      Therefore, your tuned parameters are optimized and saved using a 
-      SMOTE-augmented architecture.
+      the classifier together. This ensures SMOTE runs dynamically only withon training folds.
+      This prevents synthetic data from leaking into validation folds, ensuring unbiased scoring.
+    - GridSearchCV optimizes explicitly for Macro F1 scores, prioritizing minority class 
+      performance rather than overall accuracy on imbalanced data.
+    - The final returned best estimator is automatically refit by 
+      scikit-learn on the whole dataset using the ImbPipeline structure, embedding the SMOTE-augmented 
+      architecture directly into the finalized model.
     """
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
@@ -175,15 +176,13 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
     Orchestrates model baseline loops, hyperparameter optimization, and tracking.
 
     Actual execution logic breakdown:
-    - "BEFORE TUNING": Evaluates baseline models via manual cross-validation folds.
-      Inside each loop fold, SMOTE synthetic rows are generated on a float64 copy of
-      the data matrix to measure baseline macro F1 score without leakage.
-    - Right after scoring inside the baseline step, the raw base model is fit directly
-      on the full training array without a standalone SMOTE pre-step. For tree or
-      linear models, internal algorithmic class weights handle imbalance here.
-      For XGBoost (use_sample_weight=True), per-sample weights are computed from
-      class frequencies and passed to fit() — equivalent to class_weight='balanced'.
-    - "AFTER TUNING": Re-routes the training path through the GridSearchCV pipeline.
+    - Baseline Evaluation ("Before Tuning"): Computes baseline Macro F1 scores via 
+      manual cross-validation, applying SMOTE strictly inside individual training folds to eliminate leakage.
+    - Right after scoring inside the baseline step, the raw base model is fit directly onto the full training 
+      array. Instead of SMOTE, class imbalance is handled algorithmically via internal class weights 
+      (for RF/LR) or dynamically computed sample weights (for XGBoost).
+    - Hyperparameter Optimization ("After Tuning"): Re-routes the pipeline into GridSearchCV with StratifiedKFold, 
+      exhaustively searching for the best hyperparameters using Macro F1 as the guiding metric.
     """
     models  = get_models()
     trained = {}
@@ -333,7 +332,8 @@ def run_training(db_path: str = DB_PATH,
     X_train = X_train.astype("float64")
     X_test  = X_test.astype("float64")
 
-    # 3. Scale — Fit on train only, transform both (Kept for downstream file compatibility)
+    # 3. Scale — applied on training data only, then the same scaler is used to transform 
+    # the test data. This prevents data leakage.
     X_train_scaled, scaler = scale_features(X_train)
     X_test_scaled, _       = scale_features(X_test, scaler=scaler)
     X_train_scaled = X_train_scaled.fillna(0)

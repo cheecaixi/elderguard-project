@@ -16,6 +16,7 @@
 | `src/feature_analysis.py` | Cai Xi |
 | `eda.ipynb` | All members |
 | `cleaning.ipynb` | Amanda |
+| `Readme.md` | Cai Xi, Yi Xin |
   
 ## Instructions on how to run the pipeline
 -  Docker Desktop installed and running, OR Python 3.10+ with pip
