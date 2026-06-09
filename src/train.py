@@ -64,7 +64,7 @@ def get_models() -> dict:
       the model receives a stronger gradient signal to correct this error)
     - XGBoost does not have a built-in class_weight parameter, so we pass
       sample weights to the fit method based on class frequencies
-    - To handle the ~58/28/14% class imbalance across low/moderate/high activity.
+    - To handle the ~58/31/11% class imbalance across low/moderate/high activity.
     """
     return {
         "logistic_regression": {
@@ -99,7 +99,8 @@ def split_data(X: pd.DataFrame, y: np.ndarray, save_dir: str):
     - Prevents Data Leakage: Splitting data before scaling or tuning creates a strict firewall, 
       keeping the test set entirely hidden from the training process for unbiased evaluation.
     - Preserves Class Balance: Using stratify=y ensures both training and test sets have 
-      identical class proportions, guaranteeing stable and reliable validation.
+      identical class proportions, guaranteeing stable and reliable validation. (if high activity is 11% overall, 
+      it says 11% in both train and test)
     """
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
@@ -180,8 +181,8 @@ def train_models(X_train: pd.DataFrame, X_train_scaled: pd.DataFrame,
     Orchestrates model baseline loops, hyperparameter optimization, and tracking.
 
     Actual execution logic breakdown:
-    - Baseline Evaluation ("Before Tuning"): Computes baseline Macro F1 scores via 
-      manual cross-validation, applying SMOTE strictly inside individual training folds to eliminate leakage.
+    - Baseline Evaluation ("Before Tuning"): Computes baseline Macro F1 scores via manual cross-validation, 
+      applying SMOTE only inside individual training folds to eliminate leakage.
     - Right after scoring inside the baseline step, the raw base model is fit directly onto the full training 
       array. Instead of SMOTE, class imbalance is handled algorithmically via internal class weights 
       (for RF/LR) or dynamically computed sample weights (for XGBoost).
@@ -338,8 +339,8 @@ def run_training(db_path: str = DB_PATH,
     X_train = X_train.astype("float64")
     X_test  = X_test.astype("float64")
 
-    # 3. Scale — applied on training data only, then the same scaler is used to transform 
-    # the test data. This prevents data leakage.
+    # 3. Scale — applied on training data only, then applied to both train and test. 
+    # Fitting on test data would be data leakage - model would have seen test information before evaluation.
     X_train_scaled, scaler = scale_features(X_train)
     X_test_scaled, _       = scale_features(X_test, scaler=scaler)
     X_train_scaled = X_train_scaled.fillna(0)
