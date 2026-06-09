@@ -117,7 +117,7 @@ This project uses Git and GitHub for version control. Each member developed on t
 The raw dataset contained several quality problems requiring cleaning before modelling:
 - **Inconsistent activity labels** — variants like `lowactivity`, `low activity`, `low_activity` all referring to the same class, standardised to `low_activity`, `moderate_activity`, `high_activity`.
 - **Physically impossible sensor readings** — Session 2586 had a mean temperature of 89.9°C, which is physically impossible indoors. Since all readings originate from the same faulty hardware, the entire session (56 rows) was removed. Additionally, 929 temperature readings outside 15–40°C and 410 humidity readings outside 0–100% were marked as NaN and imputed.
-- **Missing values** — 824 CO_GasSensor readings, 1,051 Ambient Light Level readings, and others were imputed using session-level median or global mode depending on the column's variance characteristics.
+- **Missing values** — 824 CO_GasSensor readings, 1,051 Ambient Light Level readings, and others were imputed using session-level median or global median/mode depending on the column's variance characteristics.
 
 ### 2. Weak Individual Feature Correlations
 No single sensor reliably predicts activity level on its own. Activity depends on complex interactions between multiple sensors simultaneously. This finding motivated our choice of ensemble models and the engineering of interaction features.
