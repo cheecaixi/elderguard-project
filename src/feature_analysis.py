@@ -59,12 +59,13 @@ def load_artefacts(model_dir: str):
 def plot_rf_importance(model, feature_names: list, model_name: str,
                        model_dir: str) -> pd.Series:
     """
-    Built-in feature importances from the best model.
+    Extracts built-in feature_importances_ to measure the mean decrease in impurity across all trees. 
+    This identifies which features contribute most to model's decisions.
 
-    For tree-based models (Random Forest, XGBoost), feature_importances_
-    reflects mean decrease in impurity across all trees.
-    Note: can favour high-cardinality features; confirmed by permutation
-    importance below.
+    Automatically flags and highlights top-performing variables (above the 75th percentile) using 
+    distinct color coding and references a baseline mean threshold for clear scannability.
+    Note: built-in importance can overvalue features with many unique values (high cardinality).
+    Permutation Importance—is required to confirm the true impact of each feature without bias.
     """
     if not hasattr(model, "feature_importances_"):
         print("[rf_importance] Model has no feature_importances_ — skipping")

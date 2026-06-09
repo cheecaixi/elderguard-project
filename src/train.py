@@ -131,6 +131,10 @@ def tune_model(model, param_grid: dict, X_train: pd.DataFrame,
     - The final returned best estimator is automatically refit by 
       scikit-learn on the whole dataset using the ImbPipeline structure, embedding the SMOTE-augmented 
       architecture directly into the finalized model.
+    - GridSearchCV tries every combination of model settings to find the one that gets the highest score.
+    - StratifiedKFold splits the data into equal parts for testing, making sure every part has the 
+      exact same balance of categories so the test is fair. They find the absolute best settings for the 
+      model while making sure it doesn't get lucky or cheat during the test.
     """
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
@@ -286,11 +290,13 @@ def save_artefacts(trained: dict, save_dir: str, scaler,
     Save all models and pipeline artefacts to disk.
 
     Files saved:
-    - <model_name>.joblib  : trained model binaries
-    - scaler.joblib        : fitted StandardScaler for validation inference runs
+    - <model_name>.joblib  : the saved, fully-trained AI. You load it to make instant 
+                             predictions without needing to retrain it from scratch.
+    - scaler.joblib        : Stores the exact math used to resize your original data so 
+                             you can shrink or normalize new data the exact same way.
     - feature_names.json   : locks down required matrix dimensions for evaluation
-    - activity_map.json    : reverse label translation map
-    - best_model.json      : logs the champion model based on cross-validation macro F1
+    - activity_map.json    : Translates the model's numeric outputs back into human-readable text
+    - best_model.json      : logs the best model based on cross-validation macro F1
     """
     os.makedirs(save_dir, exist_ok=True)
 
