@@ -92,7 +92,7 @@ def tune_model(model, param_grid: dict, X_train, y_train, name: str):
     - GridSearchCV exhaustively searches the param_grid combinations
     - StratifiedKFold preserves class distribution in each fold
       — important given class imbalance (~58% Low Activity)
-    - Macro F1 used as scoring metric — consistent with evaluation
+    - Macro F1 used as scoring  metric — consistent with evaluation
     """
     cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
     gs = GridSearchCV(model, param_grid, cv=cv, scoring=CV_SCORING, n_jobs=-1, verbose=0)
