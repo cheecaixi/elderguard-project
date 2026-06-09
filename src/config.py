@@ -37,20 +37,22 @@ RF_PARAMS = {
     "n_jobs":           -1,
 }
 
-# Gradient Boosting
-GB_PARAMS = {
-    "max_iter":     200,
+# XGBoost
+XGB_PARAMS = {
+    "n_estimators":  200,
+    "max_depth":     5,
     "learning_rate": 0.1,
-    "max_depth":    5,
-    "class_weight": "balanced",
-    "random_state": RANDOM_STATE,
+    "tree_method":   "hist",
+    "eval_metric":   "mlogloss",
+    "random_state":  RANDOM_STATE,
+    "n_jobs":        -1,
 }
 
 # Logistic Regression
 LR_PARAMS = {
-    "max_iter":      1000,
-    "class_weight":  "balanced",
-    "random_state":  RANDOM_STATE,
+    "max_iter":     1000,
+    "class_weight": "balanced",
+    "random_state": RANDOM_STATE,
 }
 
 # ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
@@ -59,23 +61,25 @@ LR_PARAMS = {
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {
-    "n_estimators":     [100, 200, 300],
-    "max_depth":        [None, 10, 20],
-    "min_samples_leaf": [1, 2, 4],     
-    "max_features":     ["sqrt", "log2"], 
+    "n_estimators":     [100, 200],
+    "max_depth":        [4, 6, 8, 10],
+    "min_samples_leaf": [2, 4, 8, 16],
+    "max_features":     ["sqrt"]
 }
 
-GB_PARAM_GRID = {
-    "max_iter":      [100, 200],    # drop 300
-    "learning_rate": [0.05, 0.1],   # drop 0.01
-    "max_depth":     [3, 5],        # keep as is
+XGB_PARAM_GRID = {
+    "n_estimators":     [100, 200, 300],
+    "max_depth":        [3, 4],
+    "learning_rate":    [0.05, 0.1],
+    "subsample":        [0.8],
+    "colsample_bytree": [0.8],
 }
 
 LR_PARAM_GRID = {
-    "C":      [0.01, 0.1, 1.0, 10.0],   
-    "solver": ["lbfgs", "saga"],          
+    "C":      [0.01, 0.1, 1.0, 10.0],
+    "solver": ["lbfgs", "saga"],
 }
 
 # ── Cross Validation ───────────────────────────────────────────
-CV_FOLDS   = 5      # number of folds for StratifiedKFold
+CV_FOLDS   = 3           # number of folds for StratifiedKFold
 CV_SCORING = "f1_macro"  # primary metric — treats all classes equally
