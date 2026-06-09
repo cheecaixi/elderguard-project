@@ -53,30 +53,45 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
                              Preserves natural order for linear models.
     """
 
-    # CO2 sensor disagreement
+    # ── 2a. CO2 Features ──────────────────────────────────────────────────────
+    # Requires both CO2 sensor columns to be present.
+
     if "CO2_InfraredSensor" in df.columns and "CO2_ElectroChemicalSensor" in df.columns:
+
+        # Absolute difference between the two CO2 sensors.
+        # A large gap suggests sensor drift or a sudden CO2 spike (e.g. heavy exercise).
         df["CO2_Disagreement"] = (
             df["CO2_InfraredSensor"] - df["CO2_ElectroChemicalSensor"]
         ).abs()
         print("[engineer_features] Created CO2_Disagreement")
 
-        # CO2 Mean — average of both CO2 sensors
+        # Row-wise mean of both CO2 sensors.
+        # Averaging cancels out per-sensor noise for a cleaner overall CO2 signal.
         df["CO2_Mean"] = df[["CO2_InfraredSensor", "CO2_ElectroChemicalSensor"]].mean(axis=1)
         print("[engineer_features] Created CO2_Mean")
 
-    # Focus strictly on your top-performing Unit 2 and Unit 4
+    # ── 2b. Metal Oxide Sensor (MOS) Features ────────────────────────────────
+    # Only uses Units 2 and 4 — identified as the strongest predictors.
+    # Units 1 and 3 are excluded as they dilute the signal with baseline noise.
+
     core_mos_cols = ["MetalOxideSensor_Unit2", "MetalOxideSensor_Unit4"]
-    
+
     if all(c in df.columns for c in core_mos_cols):
-        # Calculate mean using only the two core predictors
+
+        # Average of the two core MOS units — a smoothed VOC/activity proxy.
         df["MOS_Core_Active_Mean"] = df[core_mos_cols].mean(axis=1)
         print("[engineer_features] Created MOS_Core_Active_Mean (Units 2 & 4)")
 
-        # Range tracking focused strictly on the core active pairs
+        # Max minus min of the two core MOS units.
+        # Captures localised volatility: sharp spikes or drops between the pair.
         df["MOS_Core_Active_Range"] = df[core_mos_cols].max(axis=1) - df[core_mos_cols].min(axis=1)
         print("[engineer_features] Created MOS_Core_Active_Range (Units 2 & 4)")
 
-    # Ambient light ordinal encoding
+    # ── 2c. Ambient Light Ordinal Encoding ───────────────────────────────────
+    # Converts the string light level into an ordered integer (0–4).
+    # Ordinal encoding is chosen over one-hot because the levels have a
+    # clear natural order (very_dim < dim < moderate < bright < very_bright).
+
     if "Ambient Light Level" in df.columns:
         light_order = {
             "very_dim":    0,
@@ -91,6 +106,13 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         print("[engineer_features] Light level mapping applied:")
         for label, code in light_order.items():
             print(f"    {label} → {code}")
+
+
+    # Remove the original text column — the ordinal version created in
+    # engineer_features() is what the model will use instead.
+    if "Ambient Light Level" in df.columns:
+        df = df.drop(columns=["Ambient Light Level"])
+        print("[encode_categorical] Dropped Ambient Light Level (ordinal version kept)")
 
     return df
 
@@ -111,8 +133,8 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
     """
     ohe_cols = ["Time of Day", "HVAC Operation Mode"]
 
-    # Lock in categorical structural scopes to guarantee column consistency
-    # regardless of train/test data distribution
+    # Fixed category lists ensure the same dummy columns are always produced,
+    # regardless of which values happen to appear in a given data split.
     categories_dict = {
         "Time of Day": ["morning", "afternoon", "evening", "night"],
         "HVAC Operation Mode": [
@@ -125,22 +147,17 @@ def encode_categorical(df: pd.DataFrame) -> pd.DataFrame:
         ],
     }
 
+    # Cast each column to pd.Categorical with the locked category list
+    # before calling get_dummies — this guarantees column consistency.
     for col in ohe_cols:
         if col in df.columns:
             df[col] = pd.Categorical(df[col], categories=categories_dict[col])
 
-    # Safely perform one-hot encoding with static locked categories
     existing_nominal = [col for col in ohe_cols if col in df.columns]
     df = pd.get_dummies(df, columns=existing_nominal, drop_first=True, dtype=int)
     print(f"[encode_categorical] Standardized One-hot encoded: {existing_nominal}")
 
-    # Drop original Ambient Light Level — ordinal version already created
-    if "Ambient Light Level" in df.columns:
-        df = df.drop(columns=["Ambient Light Level"])
-        print("[encode_categorical] Dropped Ambient Light Level (ordinal version kept)")
-
     return df
-
 
 # ── 4. Encode Target ──────────────────────────────────────────────────────────
 def encode_target(df: pd.DataFrame) -> tuple:
@@ -186,6 +203,9 @@ def encode_target(df: pd.DataFrame) -> tuple:
 
     return df, y, activity_map
 
+"""
+This helper function converts encoded numbers back into activity labels. 
+It is mainly used for displaying readable class names."""
 
 def activity_map_inv(activity_map: dict, code: int) -> str:
     """Return the class name for a given encoded integer."""
@@ -215,10 +235,12 @@ def scale_features(df: pd.DataFrame, scaler: StandardScaler = None) -> tuple:
     df_scaled = df.copy()
     if len(scale_cols) > 0:
         if scaler is None:
+            # No scaler provided — fit a new one on this data (training split only).
             scaler = StandardScaler()
             df_scaled[scale_cols] = scaler.fit_transform(df[scale_cols])
             print(f"[scale_features] Fit and scaled {len(scale_cols)} continuous features.")
         else:
+            # Scaler already fitted on training data — apply transform only.
             df_scaled[scale_cols] = scaler.transform(df[scale_cols])
             print(f"[scale_features] Transformed {len(scale_cols)} continuous features using fitted scaler.")
     else:
@@ -279,7 +301,8 @@ def build_features(df: pd.DataFrame) -> tuple:
     df = encode_categorical(df)
     df, y, activity_map = encode_target(df)
 
-    # Feature selection based on feature importance analysis
+    # Drop features identified as low-importance during feature importance analysis.
+    # These HVAC dummies and the noisy MOS unit add variance without predictive value.
     weak_features = [
         "HVAC Operation Mode_heating_low",
         "HVAC Operation Mode_cooling_low",
