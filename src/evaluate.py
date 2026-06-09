@@ -100,7 +100,8 @@ def evaluate_model(model_dir: str, model_name: str) -> dict:
     only Logistic Regression requires scaled features, so we handle that automatically.
     We evaluate on both train and test sets and save confusion matrix plots.
     The training confusion matrix uses a green color scheme, the test one uses blue — so at a glance you can compare.
-    The function returns all metrics so we can later compare across models"""
+    The function returns all metrics so we can later compare across models
+    the heatmap is saved at the saved model"""
     print(f"\n{'='*50}\n  {model_name.upper()}\n{'='*50}")
 
     # Load model
@@ -185,7 +186,7 @@ def evaluate_all(model_dir: str) -> pd.DataFrame:
         bars2 = ax.bar(x + width / 2, test_f1s,  width, label="Test F1",  color="#2E86AB")
         ax.set_ylim(0, 1)
         ax.set_ylabel("Macro F1 Score")
-        ax.set_title("Model Comparison — Train vs Test Macro F1")
+        ax.set_title("Model Comparision — Train vs Test Macro F1")
         ax.set_xticks(x)
         ax.set_xticklabels(clean_names, rotation=15)  # FIXED: Uses clean formatting on chart labels
         ax.legend()
@@ -199,6 +200,7 @@ def evaluate_all(model_dir: str) -> pd.DataFrame:
         plt.savefig(os.path.join(model_dir, "comparison.png"), dpi=120)
 
 # ── 7. Main ───────────────────────────────────────────────────────────────────
+"""run the whole pipeline for evaluation.py"""
 def run_evaluation(model_dir: str = MODEL_SAVE_DIR, model_name: str = None) -> None:
     print(f"\n{'='*50}\n  EVALUATION PIPELINE — START\n{'='*50}")
     if model_name:
