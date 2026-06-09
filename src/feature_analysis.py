@@ -102,8 +102,12 @@ def plot_permutation_importance(model, X_test: pd.DataFrame, y_test: np.ndarray,
 
     More reliable than built-in importance:
     - Measures actual drop in macro F1 when each feature is randomly shuffled
-    - Not biased toward high-cardinality features
+      Shuffles each feature across 10 evaluation rounds (n_repeats=10) on the held-out 
+      test set to measure the exact drop in Macro F1 score, eliminating any high-cardinality bias.
     - Computed on test data — reflects generalisation, not training fit
+    - perm.values (The Bar): The average drop in the Macro F1 score across all 10 rounds.
+    -perm_std.values (The Black Line): The standard deviation. It proves mathematically 
+     how much the score fluctuated around that average during the 10 rounds.
     """
     print("\n[permutation] Computing permutation importance on test set...")
     result = permutation_importance(
