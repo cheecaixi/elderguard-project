@@ -46,7 +46,10 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
                              Reduces per-sensor noise into a single CO2 signal
                              and is more robust than using either sensor alone.
     - MOS_Core_Active_Mean : Mean of the highly predictive Metal Oxide Sensor
-                             Unit 2 and Unit 4. Eliminates the baseline dilution noise of Units 1 and 3.
+                             Unit 2 and Unit 4. Eliminates the baseline dilution noise of Units 1 and 3. 
+                             Sensor Unit 2 and Unit 4 were chosen because feature importance analysis showed 
+                             they had the strongest relationship with activity levels, making them the most 
+                             predictive sensors in the dataset.
     - MOS_Core_Active_Range: max - min between MOS Unit 2 and Unit 4. Captures
                              sharp localized volatility drops or spikes.
     - Ambient_Light_Ordinal: Ordinal encoding of Ambient Light Level (0-4).
