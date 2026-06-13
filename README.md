@@ -117,6 +117,14 @@ This project uses Git and GitHub for version control. Each member developed on t
 
 ---
 
+## Dataset
+
+The raw data is a SQLite database (data/gas_monitoring.db) containing indoor air quality sensor readings across multiple sessions. After cleaning, the final dataset contains 9,610 records with 0 missing values or duplicates.
+
+Sensors recorded: infrared CO2, electrochemical CO2, CO gas sensor, Metal Oxide Sensors (Units 1–4), ambient light level, temperature, humidity, and HVAC state (time of day, heating/cooling modes).
+
+Target variable: Activity_Level — three classes: low_activity, moderate_activity, high_activity.
+
 ## Key EDA Findings
 
 ### 1. Data Quality Issues
