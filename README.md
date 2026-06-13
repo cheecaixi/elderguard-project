@@ -224,3 +224,24 @@ Macro F1 averages the F1-score across all three classes equally, regardless of c
 | Logistic Regression | 0.5869 | 0.5067 | 0.5994 | 0.5153 |
 
 Random Forest is selected as the best model based on highest CV (0.5325) and test Macro F1 (0.5494). The High Activity class F1 of 0.353 reflects the inherent difficulty of detecting the minority class (14% of data), and is meaningfully higher than Logistic Regression (0.293) and XGBoost (0.270). The train-test gap for Random Forest (~0.11) is expected given SMOTE inflates training scores — the CV score of 0.5325 is the honest generalisation estimate, and the test result of 0.5494 slightly exceeded it, confirming no test set overfitting.
+
+## Conclusion
+
+1. Feature Engineering Improved Prediction
+CO2 disagreement and MOS-based features outperformed individual sensor readings. Activity depends on multiple sensor interactions, not individual readings. MOS_Core_Active_Mean emerged as the strongest predictor of activity level.
+
+2. Data Cleaning Preserved Data Quality
+Faulty session 2586 removed. Session-median imputation preserved session-specific context. Final dataset: 9,610 records with 0 missing values or duplicates.
+
+3. SMOTE + Macro F1 Improved Fairness
+SMOTE and class weights addressed class imbalance, applied within cross-validation folds to prevent data leakage. Macro F1 ensured Low, Moderate, and High Activity were evaluated equally. Non-linear models (RF, XGBoost) outperformed the linear baseline (Logistic Regression).
+
+4. Next Step
+Drop MetalOxideSensor_Unit2 and retrain. If test Macro F1 holds or improves, it confirms Unit2 was noise — illustrating how iterative importance analysis → feature removal → retraining is how production ML pipelines are refined over time.
+
+## Limitations
+
+- Data originates from a single building/environment; the model may not generalise across different indoor settings or populations.
+- High Activity class (11% of data) remains the hardest to detect despite SMOTE and class weighting; the RF recall of 0.581 leaves meaningful room for improvement.
+- Sensor drift over time is not modelled — a deployed system would need periodic recalibration.
+- The pipeline currently does not expose a real-time inference API; predictions require running the full pipeline manually.
