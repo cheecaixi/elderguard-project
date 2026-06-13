@@ -137,7 +137,7 @@ The raw dataset contained several quality problems requiring cleaning before mod
 No single sensor reliably predicts activity level on its own. Activity depends on complex interactions between multiple sensors simultaneously. This finding motivated our choice of ensemble models and the engineering of interaction features.
 
 ### 3. Class Imbalance
-The dataset is imbalanced: Low Activity ~58%, Moderate Activity ~31, High Activity ~11%. A naive model predicting "Low" every time would achieve 58% accuracy while completely failing to detect High Activity. This directly shaped our metric choice (Macro F1) that averages F1 equally across all 3 classes and imbalance-handling strategy (SMOTE, class weigths).
+The dataset is imbalanced: Low Activity ~58%, Moderate Activity ~31%, High Activity ~11%. A naive model predicting "Low" every time would achieve 58% accuracy while completely failing to detect High Activity. This directly shaped our metric choice (Macro F1) that averages F1 equally across all 3 classes and imbalance-handling strategy (SMOTE, class weights).
 
 ---
 
