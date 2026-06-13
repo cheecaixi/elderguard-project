@@ -12,12 +12,18 @@
 | `src/features.py` | Amanda |
 | `src/config.py` | Cai Xi |
 | `src/train.py` | Cai Xi |
-| `src/evaluate.py` | Yi Xin |
+| `src/evaluate.py` | Yi Xin & Cai Xi|
 | `src/feature_analysis.py` | Cai Xi |
 | `eda.ipynb` | All members |
 | `cleaning.ipynb` | Amanda |
-| `Readme.md` | Cai Xi, Yi Xin |
-  
+| `Readme.md` | Cai Xi & Yi Xin |
+
+##Problem Statement
+
+Raw sensor data contains errors, missing values, and physical impossibilities (e.g. 89°C indoors, negative CO2 readings), preventing reliable prediction of human activity levels from gas/environmental sensors.
+
+Goal: Build an end-to-end ML pipeline — EDA → cleaning → feature engineering → training → evaluation → feature analysis — that predicts Activity Level (low / moderate / high) from raw sensor data, identifies key predictive features, and serves as a reliable, non-invasive early-warning system to help caregivers intervene proactively.
+ 
 ## Instructions on how to run the pipeline
 -  Docker Desktop installed and running, OR Python 3.10+ with pip
 
