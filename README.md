@@ -18,7 +18,7 @@
 | `cleaning.ipynb` | Amanda |
 | `Readme.md` | Cai Xi & Yi Xin |
 
-##Problem Statement
+## Problem Statement
 
 Raw sensor data contains errors, missing values, and physical impossibilities (e.g. 89°C indoors, negative CO2 readings), preventing reliable prediction of human activity levels from gas/environmental sensors.
 
