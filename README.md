@@ -131,13 +131,13 @@ Target variable: Activity_Level — three classes: low_activity, moderate_activi
 The raw dataset contained several quality problems requiring cleaning before modelling:
 - **Inconsistent activity labels** — variants like `lowactivity`, `low activity`, `low_activity` all referring to the same class, standardised to `low_activity`, `moderate_activity`, `high_activity`.
 - **Physically impossible sensor readings** — Session 2586 had a mean temperature of 89.9°C, which is physically impossible indoors. Since all readings originate from the same faulty hardware, the entire session (56 rows) was removed. Additionally, 929 temperature readings outside 15–40°C and 410 humidity readings outside 0–100% were marked as NaN and imputed.
-- **Missing values** — 824 CO_GasSensor readings, 1,051 Ambient Light Level readings, and others were imputed using session-level median or global median/mode depending on the column's variance characteristics.
+- **Missing values** — 824 (8.34%) CO_GasSensor readings, 1,051 (10.54%) Ambient Light Level readings, and others were imputed using session-level median or global median/mode depending on the column's variance characteristics.
 
 ### 2. Weak Individual Feature Correlations
 No single sensor reliably predicts activity level on its own. Activity depends on complex interactions between multiple sensors simultaneously. This finding motivated our choice of ensemble models and the engineering of interaction features.
 
 ### 3. Class Imbalance
-The dataset is imbalanced: Low Activity ~58%, Moderate Activity ~28%, High Activity ~14%. A naive model predicting "Low" every time would achieve 58% accuracy while completely failing to detect High Activity. This directly shaped our metric choice (Macro F1) that averages F1 equally across all 3 classes and imbalance-handling strategy (SMOTE, class weigths).
+The dataset is imbalanced: Low Activity ~58%, Moderate Activity ~31, High Activity ~11%. A naive model predicting "Low" every time would achieve 58% accuracy while completely failing to detect High Activity. This directly shaped our metric choice (Macro F1) that averages F1 equally across all 3 classes and imbalance-handling strategy (SMOTE, class weigths).
 
 ---
 
@@ -159,7 +159,7 @@ Based on the EDA finding that individual features have weak predictive power, we
 After running permutation importance on the held-out test set, four HVAC dummy features (heating_low, heating_high, cooling_low, cooling_high) showed zero permutation importance and were dropped. This reduced noise and improved Random Forest test Macro F1 from 0.5401 to 0.5494.
 
 ### Key Predictive Features (from Permutation Importance on test set)
-Permutation Importance — shuffle one feature's values randomly, then measure how much the model's score dropsvin F1. Big drop = feature matters. Small drop = feature is not important. 
+Permutation Importance — shuffle one feature's values randomly, then measure how much the model's score drops in F1. Big drop = feature matters. Small drop = feature is not important. 
 
 | Rank | Feature | Permutation Importance |
 |------|---------|----------------------|
