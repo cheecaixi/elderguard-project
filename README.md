@@ -147,15 +147,13 @@ Based on the EDA finding that individual features have weak predictive power, we
 
 ### Features Created
 
-**CO2_Disagreement** — Absolute difference between the infrared and electrochemical CO2 sensors. Both sensors measure the same gas, so they should agree. Large disagreement signals either sensor drift or rapid CO2 flux during high physical activity — a pattern the raw values alone cannot capture.
-
-**CO2_Mean** — Average of both CO2 sensors. Reduces per-sensor noise into a single CO2 signal more robust than either sensor individually.
-
-**MOS_Core_Active_Mean** — Mean of MetalOxideSensor Unit2 and Unit4, identified as the two highest-importance MOS units from permutation importance analysis. The raw individual units are dropped because the engineered mean captures their combined signal with higher permutation importance (0.029) than any individual unit. This reduces noise while preserving the VOC signal.
-
-**MOS_Core_Active_Range** — Max minus min between Unit2 and Unit4. Captures sharp localised volatility between the two core sensors.
-
-**Ambient_Light_Ordinal** — Ordinal encoding of Ambient Light Level (very_dim=0 through very_bright=4). Preserves natural order for linear models, which is lost with standard one-hot encoding.
+| Feature | Formula | Description |
+|---------|---------|-------------|
+| `CO2_Disagreement` | \|IR CO₂ − Electrochemical CO₂\| | Both sensors measure the same gas, so they should agree. Large disagreement signals sensor drift or rapid CO₂ flux during high physical activity — a pattern raw values alone cannot capture. |
+| `CO2_Mean` | (CO₂ Sensor 1 + CO₂ Sensor 2) / 2 | Reduces per-sensor noise into a single CO₂ signal more robust than either sensor individually. |
+| `MOS_Core_Active_Mean` | (MOS Unit2 + MOS Unit4) / 2 | Mean of the two highest-importance MOS units from permutation importance analysis. Captures their combined VOC signal (importance 0.029) while reducing noise — higher than any individual unit alone. |
+| `MOS_Core_Active_Range` | max(Unit2, Unit4) − min(Unit2, Unit4) | Captures sharp localised volatility between the two core sensors. Large differences indicate rapid environmental changes tied to physical activity. |
+| `Ambient_Light_Ordinal` | very_dim=0 → very_bright=4 | Ordinal encoding of Ambient Light Level. Preserves natural order for linear models, which is lost with standard one-hot encoding. |
 
 ### Feature Selection
 After running permutation importance on the held-out test set, four HVAC dummy features (heating_low, heating_high, cooling_low, cooling_high) showed zero permutation importance and were dropped. This reduced noise and improved Random Forest test Macro F1 from 0.5401 to 0.5494.
