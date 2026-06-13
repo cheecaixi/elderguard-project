@@ -199,8 +199,12 @@ Gradient boosted trees, strong on tabular data. Unlike sklearn models, XGBoost h
 All three models additionally use **SMOTE** (Synthetic Minority Oversampling Technique) during cross-validation folds. SMOTE generates synthetic minority class samples inside each fold only, preventing data leakage into validation sets. After SMOTE balances the fold, sample weights are recomputed on the resampled labels to avoid double-penalising the minority class.
 
 ### Hyperparameter Tuning
-GridSearchCV with 3-fold StratifiedKFold cross-validation, scoring on Macro F1. StratifiedKFold preserves class distribution across folds. SMOTE is wrapped inside an ImbPipeline within GridSearchCV so resampling occurs inside each fold and never leaks into validation data. Key parameters tuned: `max_depth`, `min_samples_leaf`, `n_estimators` (RF); `learning_rate`, `max_depth`, `n_estimators` (XGBoost); `C`, `solver` (Logistic Regression).
+GridSearchCV with 3-fold StratifiedKFold cross-validation, scoring on Macro F1. StratifiedKFold preserves class distribution across folds. SMOTE is wrapped inside an ImbPipeline within GridSearchCV so resampling occurs inside each fold and never leaks into validation data. 
 
+Key parameters tuned:
+- Random Forest: `max_depth`, `min_samples_leaf`, `n_estimators`
+- XGBoost: `learning_rate`, `max_depth`, `n_estimators`
+- Logistic Regression: `C`, `solver` 
 ---
 
 ## Evaluation Metric
