@@ -230,6 +230,8 @@ Macro F1 averages the F1-score across all three classes equally, regardless of c
 
 Random Forest is selected as the best model based on highest CV (0.5325) and test Macro F1 (0.5494). The High Activity class F1 of 0.353 reflects the inherent difficulty of detecting the minority class (14% of data), and is meaningfully higher than Logistic Regression (0.293) and XGBoost (0.270). The train-test gap for Random Forest (~0.11) is expected given SMOTE inflates training scores — the CV score of 0.5325 is the honest generalisation estimate, and the test result of 0.5494 slightly exceeded it, confirming no test set overfitting.
 
+Random Forest performed better (0.5494 vs 0.5248) likely because our data has noise from sensor faults and imputation — Random Forest handles noisy data more robustly. XGBoost is more powerful but also more sensitive to noise, which is why constraining `max_depth` and `learning_rate` was important to prevent it from overfitting the noise.
+
 ## Conclusion
 
 1. Feature Engineering Improved Prediction
