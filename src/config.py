@@ -9,8 +9,8 @@ MODEL_SAVE_DIR = "saved_model"
 
 # ── Data Cleaning ─────────────────────────────────────────────
 CONTAMINATED_SESSIONS = [2586]   # identified in EDA
-MIN_TEMPERATURE = 15.0           # realistic indoor min (°C)
-MAX_TEMPERATURE = 40.0           # realistic indoor max (°C)
+MIN_TEMPERATURE = 15.0           # realistic indoor min (°C), can be further adjusted 
+MAX_TEMPERATURE = 40.0           # realistic indoor max (°C), can be further adjusted
 MIN_HUMIDITY = 0.0
 MAX_HUMIDITY = 100.0
 
@@ -30,8 +30,8 @@ TUNE_MODELS = True
 # ── Default Model Parameters (used when TUNE_MODELS = False) ──
 # Random Forest
 RF_PARAMS = {
-    "n_estimators":     200,
-    "min_samples_leaf": 2,
+    "n_estimators":     200,                    # number of trees - more trees = more stable predictions but longer training time
+    "min_samples_leaf": 2,                      # minimum samples per leaf - prevent overfitting
     "class_weight":     "balanced_subsample",
     "random_state":     RANDOM_STATE,
     "n_jobs":           -1,
@@ -39,8 +39,8 @@ RF_PARAMS = {
 
 # XGBoost
 XGB_PARAMS = {
-    "n_estimators":  200,
-    "max_depth":     5,
+    "n_estimators":  200,           # number of boosting rounds
+    "max_depth":     5,             # max tree depth — higher = more complex, risk of overfit
     "learning_rate": 0.1,
     "tree_method":   "hist",
     "eval_metric":   "mlogloss",
@@ -50,14 +50,14 @@ XGB_PARAMS = {
 
 # Logistic Regression
 LR_PARAMS = {
-    "max_iter":     1000,
+    "max_iter":     1000,           # max iterations for solver to converge
     "class_weight": "balanced",
     "random_state": RANDOM_STATE,
 }
 
 # ── Tuning Grids (used when TUNE_MODELS = True) ────────────────
 # Only the most impactful parameters are tuned to keep runtime reasonable.
-# 5-fold StratifiedKFold CV is used to preserve class distribution.
+# 3-fold StratifiedKFold CV is used to preserve class distribution.
 # Macro F1 is the scoring metric — consistent with evaluation.
 
 RF_PARAM_GRID = {

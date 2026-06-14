@@ -8,12 +8,12 @@
  ### Code Contributions
 | File | Author |
 |------|--------|
-| `src/cleaning.py` | Cai Xi & Amanda |
-| `src/features.py` | Amanda |
-| `src/config.py` | Cai Xi |
-| `src/train.py` | Cai Xi |
-| `src/evaluate.py` | Yi Xin & Cai Xi|
-| `src/feature_analysis.py` | Cai Xi |
+| `cleaning.py` | Cai Xi & Amanda |
+| `features.py` | Amanda |
+| `config.py` | Cai Xi |
+| `train.py` | Cai Xi |
+| `evaluate.py` | Yi Xin & Cai Xi|
+| `feature_analysis.py` | Cai Xi |
 | `eda.ipynb` | All members |
 | `cleaning.ipynb` | Amanda |
 | `Readme.md` | Cai Xi & Yi Xin |
@@ -134,7 +134,7 @@ The raw dataset contained several quality problems requiring cleaning before mod
 - **Missing values** — 824 (8.34%) CO_GasSensor readings, 1,051 (10.54%) Ambient Light Level readings, and others were imputed using session-level median or global median/mode depending on the column's variance characteristics.
 
 ### 2. Weak Individual Feature Correlations
-No single sensor reliably predicts activity level on its own. Activity depends on complex interactions between multiple sensors simultaneously. This finding motivated our choice of ensemble models and the engineering of interaction features.
+No single sensor reliably predicts activity level on its own. Activity depends on complex interactions between multiple sensors simultaneously. This finding motivated our choice of ensemble models and the engineering of interaction features. Using Random Forest and Gradient Boosting which handles non-linear interactions.
 
 ### 3. Class Imbalance
 The dataset is imbalanced: Low Activity ~58%, Moderate Activity ~31%, High Activity ~11%. A naive model predicting "Low" every time would achieve 58% accuracy while completely failing to detect High Activity. This directly shaped our metric choice (Macro F1) that averages F1 equally across all 3 classes and imbalance-handling strategy (SMOTE, class weights).
@@ -236,7 +236,7 @@ Faulty session 2586 removed. Session-median imputation preserved session-specifi
 3. SMOTE + Macro F1 Improved Fairness
 SMOTE and class weights addressed class imbalance, applied within cross-validation folds to prevent data leakage. Macro F1 ensured Low, Moderate, and High Activity were evaluated equally. Non-linear models (RF, XGBoost) outperformed the linear baseline (Logistic Regression).
 
-4. Next Step
+4. Next Step for Getting Better Results
 Drop MetalOxideSensor_Unit2 and retrain. If test Macro F1 holds or improves, it confirms Unit2 was noise — illustrating how iterative importance analysis → feature removal → retraining is how production ML pipelines are refined over time.
 
 ## Limitations
