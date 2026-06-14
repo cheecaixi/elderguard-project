@@ -195,6 +195,11 @@ An ensemble of decision trees that naturally handles non-linear feature interact
 ### XGBoost
 Gradient boosted trees, strong on tabular data. Unlike sklearn models, XGBoost has no native `class_weight` parameter, so per-sample weights computed from class frequencies (`compute_sample_weight('balanced')`) are passed directly to `fit()`. This achieves equivalent effect to `class_weight='balanced'`. Hyperparameter tuning constrained `max_depth` to 3–4 and `learning_rate` to 0.05–0.1 to prevent overfitting — earlier unconstrained runs with `max_depth=5` and `learning_rate=0.2` produced a train F1 of 0.92 against a test F1 of 0.51, a clear overfit. The constrained grid produced a healthy train F1 of 0.5890 vs test F1 of 0.5248.
 
+### Difference Between Random Forest & Gradient Boosting
+**Random Forest** builds many trees independently and in parallel. Each tree is trained on a random subset of data and random subset of features. The final prediction is a majority vote across all trees. Trees don't learn from each other — they are combined only at the end.
+
+**Gradient Boosting (XGBoost)** builds trees sequentially. Each new tree specifically tries to fix the mistakes made by the previous tree. Trees learn from each other — each one corrects the errors of the last.
+
 ### Imbalance Handling
 All three models additionally use **SMOTE** (Synthetic Minority Oversampling Technique) during cross-validation folds. SMOTE generates synthetic minority class samples inside each fold only, preventing data leakage into validation sets. After SMOTE balances the fold, sample weights are recomputed on the resampled labels to avoid double-penalising the minority class.
 
